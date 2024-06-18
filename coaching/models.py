@@ -41,26 +41,9 @@ class Event(models.Model):
     def final_price(self):
         return self.price * (1 - self.discount_percentage / 100)
 
-class Session(models.Model):
-    SESSION_TYPE_CHOICES = [
-        ('individual', 'Individual'),
-        ('group', 'Group/Team'),
-    ]
-
-    event = models.ForeignKey(Event, related_name='sessions', on_delete=models.CASCADE)
-    session_type = models.CharField(max_length=10, choices=SESSION_TYPE_CHOICES)
-    max_participants = models.PositiveIntegerField(default=1)
-    coach = models.ForeignKey(User, related_name='coaching_sessions', on_delete=models.CASCADE)
-    start_time = models.DateTimeField()
-    end_time = models.DateTimeField()
-    
-    def __str__(self):
-        return f"{self.event.title} - {self.session_type}"
-    
-
 class Participant(models.Model):
-    session = models.ForeignKey('Session', related_name='participants', on_delete=models.CASCADE)
-    user = models.ForeignKey(User, related_name='sessions', on_delete=models.CASCADE, blank=True, null=True)
+    session = models.ForeignKey(Event, related_name='event', on_delete=models.CASCADE)
+    user = models.ForeignKey(User, related_name='participant', on_delete=models.CASCADE, blank=True, null=True)
     joined_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
