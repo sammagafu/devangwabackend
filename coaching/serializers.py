@@ -14,11 +14,6 @@ class EventSerializer(serializers.ModelSerializer):
         model = Event
         fields = ['id', 'title', 'description', 'event_type', 'start_time', 'end_time', 'location', 'google_meet_link', 'discount_percentage','price','final_price', 'registration_deadline']
 
-# class SessionSerializer(serializers.ModelSerializer):
-#     class Meta:
-#         model = Session
-#         fields = ['id', 'event', 'session_type', 'end_time', 'google_meet_link', 'location']
-
 class ParticipantSerializer(serializers.ModelSerializer):
     user = UserSerializer()
     event = EventSerializer()
