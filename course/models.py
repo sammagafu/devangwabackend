@@ -1,5 +1,6 @@
 from django.db import models
 from django.contrib.auth import get_user_model
+from django_resized import ResizedImageField
 from django.utils.text import slugify
 
 
@@ -10,10 +11,14 @@ class Course(models.Model):
     title = models.CharField(max_length=255)
     slug = models.SlugField(max_length=255, unique=True, blank=True)
     description = models.TextField()
-    instructor = models.ForeignKey(User, on_delete=models.CASCADE)
+    instructor = models.ForeignKey(User, on_delete=models.CASCADE,related_name="course_creator")
     price = models.DecimalField(max_digits=10, decimal_places=2)
+    ispublished = models.BooleanField(default=False)
+    cover = ResizedImageField(size=[1920, 1080], crop=['middle', 'center'], upload_to='course/cover/',default="cover-img.jpg")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    discount_percentage = models.DecimalField(max_digits=5, decimal_places=2, default=0.00)
+    discount_deadline = models.DateTimeField(blank=True, null=True)
     
     class Meta:
         ordering = ['-created_at']
@@ -26,12 +31,17 @@ class Course(models.Model):
             self.slug = slugify(self.title)
         super(Course, self).save(*args, **kwargs)
 
+    @property
+    def final_price(self):
+        return self.price * (1 - self.discount_percentage / 100)
+
 
 class Module(models.Model):
     title = models.CharField(max_length=255)
     slug = models.SlugField(max_length=255, unique=True, blank=True)
     course = models.ForeignKey(Course, related_name='modules', on_delete=models.CASCADE)
     order = models.PositiveIntegerField(default=0)
+    description = models.TextField(default="description")
     
     class Meta:
         ordering = ['order']
@@ -41,6 +51,7 @@ class Module(models.Model):
     
     def save(self, *args, **kwargs):
         if not self.slug:
+            self.order = self.pk
             self.slug = slugify(self.title)
         super(Module, self).save(*args, **kwargs)
 
@@ -112,7 +123,7 @@ class Answer(models.Model):
 
 
 class Enrollment(models.Model):
-    user = models.ForeignKey(User, related_name='enrollments', on_delete=models.CASCADE)
+    user = models.ForeignKey(User, related_name='enrol', on_delete=models.CASCADE)
     course = models.ForeignKey(Course, related_name='enrollments', on_delete=models.CASCADE)
     enrolled_at = models.DateTimeField(auto_now_add=True)
 

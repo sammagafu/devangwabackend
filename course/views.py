@@ -1,10 +1,21 @@
 from rest_framework import viewsets
 from .models import Course, Module, Video, Document, Quiz, Question, Answer, Enrollment
 from .serializers import CourseSerializer, ModuleSerializer, VideoSerializer, DocumentSerializer, QuizSerializer, QuestionSerializer, AnswerSerializer, EnrollmentSerializer
+from rest_framework.permissions import IsAuthenticated
+from rest_framework import viewsets, status
+from rest_framework.response import Response
+from django.http import Http404
+
+
 
 class CourseViewSet(viewsets.ModelViewSet):
     queryset = Course.objects.all()
     serializer_class = CourseSerializer
+    permission_classes = [IsAuthenticated]
+    lookup_field = 'slug'
+
+    def perform_create(self, serializer):
+        serializer.save(instructor=self.request.user)
 
 class ModuleViewSet(viewsets.ModelViewSet):
     queryset = Module.objects.all()

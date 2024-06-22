@@ -16,6 +16,12 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path,include,re_path
+from django.conf.urls.static import static
+from django.conf import settings
+from rest_framework_simplejwt.views import (
+    TokenObtainPairView,
+    TokenRefreshView,
+)
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -23,7 +29,10 @@ urlpatterns = [
     path('api/v1/coaching/', include('coaching.urls')),
     path('api/v1/community/', include('community.urls')),
     re_path(r'^api/v1/auth/', include('djoser.urls')),
-    re_path(r'^api/v1/auth/', include('djoser.urls.jwt')),
-
-
+    # re_path(r'^api/v1/auth/', include('djoser.urls.jwt')),
+    path('api/v1/auth/jwt/create/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
+    path('api/v1/auth/jwt/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
 ]
+
+urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)

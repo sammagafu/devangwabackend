@@ -2,6 +2,7 @@ from django.db import models
 from django.utils.text import slugify
 from django.utils.crypto import get_random_string
 from django.core.exceptions import ValidationError
+from decimal import Decimal
 from django.contrib.auth import get_user_model
 
 User = get_user_model()
@@ -22,6 +23,7 @@ class Event(models.Model):
     created_by = models.ForeignKey(User, on_delete=models.CASCADE)
     price = models.DecimalField(max_digits=10, decimal_places=2)
     discount_percentage = models.DecimalField(max_digits=5, decimal_places=2, default=0.00)
+    discount_deadline = models.DateTimeField()
     registration_deadline = models.DateTimeField()
     google_meet_link = models.URLField(blank=True, null=True)
 
@@ -39,7 +41,9 @@ class Event(models.Model):
     
     @property
     def final_price(self):
-        return self.price * (1 - self.discount_percentage / 100)
+        discount_factor = Decimal('1') - (self.discount_percentage / Decimal('100'))
+        return self.price * discount_factor
+
 
 class Participant(models.Model):
     session = models.ForeignKey(Event, related_name='event', on_delete=models.CASCADE)

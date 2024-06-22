@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Category, Thread, Post, ThreadLike, PostLike
+from .models import Category, Thread, ThreadReply, ThreadLike, PostLike
 from django.contrib.auth import get_user_model
 
 User = get_user_model()
@@ -36,7 +36,7 @@ class ThreadSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Thread
-        fields = ['id', 'post', 'category', 'title', 'slug', 'starter', 'created_at', 'views', 'likes', 'likes_count']
+        fields = ['id', 'post', 'category', 'content', 'slug', 'starter', 'created_at', 'views', 'likes', 'likes_count']
 
     def get_likes_count(self, obj):
         return obj.likes.count()
@@ -48,7 +48,7 @@ class PostSerializer(serializers.ModelSerializer):
     likes_count = serializers.SerializerMethodField()
 
     class Meta:
-        model = Post
+        model = ThreadReply
         fields = ['id', 'thread', 'author', 'content', 'created_at', 'likes', 'likes_count']
 
     def get_likes_count(self, obj):

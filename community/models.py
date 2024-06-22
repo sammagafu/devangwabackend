@@ -19,9 +19,9 @@ class Category(models.Model):
         return self.name
 
 class Thread(models.Model):
-    post = ResizedImageField(size=[1350, 1080], crop=['middle', 'center'], upload_to='post')
+    post = ResizedImageField(size=[1920, 1080], crop=['middle', 'center'], upload_to='post')
     category = models.ForeignKey(Category, related_name='threads', on_delete=models.CASCADE)
-    title = models.CharField(max_length=255)
+    content = models.TextField()
     slug = models.SlugField(max_length=255, unique=True, blank=True)
     starter = models.ForeignKey(User, on_delete=models.CASCADE)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -29,11 +29,11 @@ class Thread(models.Model):
 
     def save(self, *args, **kwargs):
         if not self.slug:
-            self.slug = slugify(self.title)
+            self.slug = slugify(self.content)
         super(Thread, self).save(*args, **kwargs)
 
     def __str__(self):
-        return self.title
+        return self.content
 
 class ThreadLike(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
@@ -46,7 +46,7 @@ class ThreadLike(models.Model):
     def __str__(self):
         return f'{self.user.username} likes {self.thread.title}'
 
-class Post(models.Model):
+class ThreadReply(models.Model):
     thread = models.ForeignKey(Thread, related_name='posts', on_delete=models.CASCADE)
     author = models.ForeignKey(User, on_delete=models.CASCADE)
     content = models.TextField()
@@ -57,7 +57,7 @@ class Post(models.Model):
 
 class PostLike(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
-    post = models.ForeignKey(Post, related_name='likes', on_delete=models.CASCADE)
+    post = models.ForeignKey(ThreadReply, related_name='likes', on_delete=models.CASCADE)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

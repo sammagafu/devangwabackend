@@ -2,25 +2,10 @@ from rest_framework import serializers
 from .models import Course, Module, Video, Document, Quiz, Question, Answer, Enrollment
 from django.contrib.auth import get_user_model
 
-User = get_user_model()
-
-class UserSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = User
-        fields = ['id', 'username', 'email']
-
-class CourseSerializer(serializers.ModelSerializer):
-    instructor = UserSerializer()
-
-    class Meta:
-        model = Course
-        fields = ['id', 'title', 'description', 'price', 'instructor','discount_percentage', 'slug', 'final_price', 'created_at', 'updated_at', 'modules']
-
 class ModuleSerializer(serializers.ModelSerializer):
     class Meta:
         model = Module
-        fields = ['id', 'title', 'course', 'order', 'videos', 'documents', 'quizzes']
-
+        fields = '__all__'
 class VideoSerializer(serializers.ModelSerializer):
     class Meta:
         model = Video
@@ -46,10 +31,18 @@ class AnswerSerializer(serializers.ModelSerializer):
         model = Answer
         fields = ['id', 'question', 'text', 'is_correct']
 
+class CourseSerializer(serializers.ModelSerializer):
+    course_creator = serializers.PrimaryKeyRelatedField(many=True, read_only=True)
+    class Meta:
+        model = Course
+        fields = ['id', 'title','ispublished','cover', 'description', 'price', 'course_creator','discount_percentage', 'slug', 'final_price', 'created_at', 'updated_at', 'modules']
+        
+
 class EnrollmentSerializer(serializers.ModelSerializer):
-    user = UserSerializer()
+    enrolleduser = serializers.PrimaryKeyRelatedField(many=True, read_only=True)
     course = CourseSerializer()
 
     class Meta:
         model = Enrollment
-        fields = ['id', 'user', 'course', 'enrolled_at']
+        fields = ['id', 'enrolleduser', 'course', 'enrolled_at']
+
