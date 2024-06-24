@@ -38,10 +38,11 @@ class Course(models.Model):
 
 class Module(models.Model):
     title = models.CharField(max_length=255)
-    slug = models.SlugField(max_length=255, unique=True, blank=True)
-    course = models.ForeignKey(Course, related_name='modules', on_delete=models.CASCADE)
+    slug = models.SlugField(max_length=255, unique=True, blank=True,editable=False)
+    course = models.ForeignKey(Course, related_name='modules', on_delete=models.SET_NULL,null=True, blank=True)
     order = models.PositiveIntegerField(default=0)
     description = models.TextField(default="description")
+    created_at = models.DateTimeField(auto_now_add=True,blank=True,null=True)
     
     class Meta:
         ordering = ['order']
@@ -51,7 +52,6 @@ class Module(models.Model):
     
     def save(self, *args, **kwargs):
         if not self.slug:
-            self.order = self.pk
             self.slug = slugify(self.title)
         super(Module, self).save(*args, **kwargs)
 
@@ -60,7 +60,7 @@ class Video(models.Model):
     title = models.CharField(max_length=255)
     slug = models.SlugField(max_length=255, unique=True, blank=True)
     module = models.ForeignKey(Module, related_name='videos', on_delete=models.CASCADE)
-    video_url = models.URLField()
+    video_url = models.TextField(max_length=300)
     
     def __str__(self):
         return self.title
