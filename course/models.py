@@ -34,7 +34,10 @@ class Course(models.Model):
     @property
     def final_price(self):
         return self.price * (1 - self.discount_percentage / 100)
-
+    
+    def enroll(self, user):
+        if not self.enrollments.filter(user=user).exists():
+            Enrollment.objects.create(user=user, course=self)
 
 class Module(models.Model):
     title = models.CharField(max_length=255)
@@ -128,4 +131,4 @@ class Enrollment(models.Model):
     enrolled_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
-        return f"{self.user.username} enrolled in {self.course.title}"
+        return f"{self.user.full_name} enrolled in {self.course.title}"

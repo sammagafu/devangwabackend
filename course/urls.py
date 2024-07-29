@@ -14,4 +14,5 @@ router.register(r'answers', views.AnswerViewSet)
 
 urlpatterns = [
     path('course/', include(router.urls)),
+    path('course/<slug:slug>/enroll/', views.CourseViewSet.as_view({'post': 'enroll'}), name='course-enroll'),
 ]

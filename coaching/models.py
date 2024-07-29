@@ -3,6 +3,7 @@ from django.utils.text import slugify
 from django.utils.crypto import get_random_string
 from django.core.exceptions import ValidationError
 from decimal import Decimal
+from django_resized import ResizedImageField
 from django.contrib.auth import get_user_model
 
 User = get_user_model()
@@ -23,10 +24,13 @@ class Event(models.Model):
     created_by = models.ForeignKey(User, on_delete=models.CASCADE)
     price = models.DecimalField(max_digits=10, decimal_places=2)
     discount_percentage = models.DecimalField(max_digits=5, decimal_places=2, default=0.00)
-    discount_deadline = models.DateTimeField()
+    discount_deadline = models.DateTimeField(null=True,blank=True)
     registration_deadline = models.DateTimeField()
-    google_meet_link = models.URLField(blank=True, null=True)
-
+    cover = ResizedImageField(size=[1920, 1080], crop=['middle', 'center'], upload_to='event/cover/',default="cover-img.jpg")
+    
+    class Meta:
+        ordering = ["start_time"]
+        
     def __str__(self):
         return self.title
     
@@ -41,8 +45,14 @@ class Event(models.Model):
     
     @property
     def final_price(self):
-        discount_factor = Decimal('1') - (self.discount_percentage / Decimal('100'))
+        discount_percentage_decimal = Decimal(str(self.discount_percentage))
+        discount_factor = Decimal('1') - (discount_percentage_decimal / Decimal('100'))
         return self.price * discount_factor
+    
+    def attend(self, user):
+        participant, created = Participant.objects.get_or_create(session=self, user=user)
+        return participant
+
 
 
 class Participant(models.Model):
@@ -52,7 +62,7 @@ class Participant(models.Model):
 
     def __str__(self):
         if self.user:
-            return f"{self.user.username} in {self.session}"
+            return f"{self.user.full_name} in {self.session}"
         else:
             return f"{self.participant_name} in {self.session}"
         

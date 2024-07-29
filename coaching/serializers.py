@@ -7,15 +7,16 @@ User = get_user_model()
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ['id', 'email']
+        fields = ['id', 'email','full_name']
 
 class EventSerializer(serializers.ModelSerializer):
     class Meta:
         model = Event
-        fields = ['id', 'title', 'description', 'event_type', 'start_time', 'end_time', 'location', 'google_meet_link', 'discount_percentage','price','final_price', 'registration_deadline']
+        fields = ['id', 'title', 'description', 'event_type', 'start_time', 'end_time', 'location', 'cover', 'discount_percentage','price','final_price', 'registration_deadline','discount_deadline','slug']
+        read_only_fields = ['slug']
 
 class ParticipantSerializer(serializers.ModelSerializer):
-    user = UserSerializer()
+    user = UserSerializer(read_only=True)
     event = EventSerializer()
 
     class Meta:

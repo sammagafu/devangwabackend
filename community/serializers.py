@@ -12,7 +12,7 @@ class CategorySerializer(serializers.ModelSerializer):
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ['id', 'username']
+        fields = ['id', 'full_name','phonenumber']
 
 class ThreadLikeSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)
@@ -29,21 +29,22 @@ class PostLikeSerializer(serializers.ModelSerializer):
         fields = ['id', 'user', 'created_at']
 
 class ThreadSerializer(serializers.ModelSerializer):
+    starter = UserSerializer(read_only=True)
     category = CategorySerializer(read_only=True)
-    starter = serializers.ReadOnlyField(source='starter.username')
     likes = ThreadLikeSerializer(many=True, read_only=True)
     likes_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Thread
+        depth = 2
         fields = ['id', 'post', 'category', 'content', 'slug', 'starter', 'created_at', 'views', 'likes', 'likes_count']
 
     def get_likes_count(self, obj):
         return obj.likes.count()
 
-class PostSerializer(serializers.ModelSerializer):
-    thread = ThreadSerializer(read_only=True)
-    author = serializers.ReadOnlyField(source='author.username')
+class ThreadReplySerializer(serializers.ModelSerializer):
+    thread = serializers.PrimaryKeyRelatedField(queryset=Thread.objects.all())  
+    author = UserSerializer(read_only=True)
     likes = PostLikeSerializer(many=True, read_only=True)
     likes_count = serializers.SerializerMethodField()
 

@@ -1,6 +1,13 @@
 from rest_framework import serializers
 from .models import Course, Module, Video, Document, Quiz, Question, Answer, Enrollment
+from django.contrib.auth import get_user_model
 
+User = get_user_model()
+
+class UserSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ['id', 'email','full_name']
 class AnswerSerializer(serializers.ModelSerializer):
     class Meta:
         model = Answer
@@ -45,18 +52,28 @@ class ModuleSerializer(serializers.ModelSerializer):
         fields = ['id', 'title', 'slug', 'order', 'description', 'videos', 'documents', 'quizzes']
         read_only_fields = ['id', 'videos', 'documents', 'quizzes']
 
+class EnrollmentSerializer(serializers.ModelSerializer):
+    user = UserSerializer()
+    course = serializers.StringRelatedField()
+
+    class Meta:
+        model = Enrollment
+        fields = ['id', 'user', 'course', 'enrolled_at']
+        read_only_fields = ['id', 'user', 'course', 'enrolled_at']
+
 class CourseSerializer(serializers.ModelSerializer):
-    instructor = serializers.StringRelatedField()
+    instructor = UserSerializer(read_only=True)
     modules = ModuleSerializer(many=True, read_only=True)
-    enrollments = serializers.StringRelatedField(many=True, read_only=True)
+    enrollments = EnrollmentSerializer(many=True, read_only=True)
 
     class Meta:
         model = Course
         fields = ['id', 'title', 'slug', 'description', 'instructor', 'price', 'ispublished', 'cover', 'created_at', 'updated_at', 'discount_percentage', 'discount_deadline', 'modules', 'enrollments', 'final_price']
         read_only_fields = ['id', 'modules', 'enrollments', 'final_price']
 
+
 class EnrollmentSerializer(serializers.ModelSerializer):
-    user = serializers.StringRelatedField()
+    user = UserSerializer()
     course = serializers.StringRelatedField()
 
     class Meta:

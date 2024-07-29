@@ -1,6 +1,9 @@
 from rest_framework import viewsets, permissions
 from .models import Course, Module, Video, Document, Quiz, Question, Answer
 from .serializers import CourseSerializer, ModuleSerializer, VideoSerializer, DocumentSerializer, QuizSerializer, QuestionSerializer, AnswerSerializer
+from rest_framework.permissions import IsAuthenticatedOrReadOnly,IsAuthenticated,IsAdminUser
+from rest_framework.response import Response
+
 
 class CourseViewSet(viewsets.ModelViewSet):
     queryset = Course.objects.all()
@@ -10,6 +13,24 @@ class CourseViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(instructor=self.request.user)
+
+    def enroll(self, request, slug=None):
+        course = self.get_object()
+        course.enroll(request.user)
+        serializer = self.get_serializer(course)
+        return Response(serializer.data)
+
+    def get_permissions(self):
+        if self.action == 'list':
+            self.permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+        elif self.action == 'create':
+            self.permission_classes = [permissions.IsAdminUser]
+        elif self.action == 'enroll':
+            self.permission_classes = [permissions.IsAuthenticated]
+        else:
+            self.permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+        return super().get_permissions()
+
 
 class ModuleViewSet(viewsets.ModelViewSet):
     queryset = Module.objects.all()
@@ -74,3 +95,4 @@ class AnswerViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(question=self.request.data.get('question'))
+
