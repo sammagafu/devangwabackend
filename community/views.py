@@ -52,7 +52,7 @@ class IncrementThreadViewsAPIView(views.APIView):
 
 # Like Thread
 class LikeThreadAPIView(views.APIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
 
     def post(self, request, slug):
         thread = get_object_or_404(Thread, slug=slug)
