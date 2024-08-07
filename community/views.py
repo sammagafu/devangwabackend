@@ -1,4 +1,5 @@
-from rest_framework import generics, views, status,permissions
+from rest_framework import generics, views, status,permissions, viewsets, filters
+from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
 from .models import Category, Thread, ThreadReply, ThreadLike, PostLike
@@ -116,3 +117,14 @@ class PostLikesListAPIView(generics.ListAPIView):
         post = get_object_or_404(ThreadReply, pk=self.kwargs['pk'])
         return PostLike.objects.filter(post=post)
         pagination_class = None  # Add this if you don't want pagination for listing likes
+
+
+class ThreadReplyViewSet(viewsets.ModelViewSet):
+    queryset = ThreadReply.objects.all()
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['thread', 'author', 'created_at']
+    serializer_class = ThreadReplySerializer
+
+    def perform_create(self, serializer):
+        serializer.save(author=self.request.user)
+        return super().perform_create(serializer)

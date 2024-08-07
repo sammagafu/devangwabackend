@@ -56,7 +56,7 @@ class ThreadLike(models.Model):
         unique_together = ('user', 'thread')
 
     def __str__(self):
-        return f'{self.user.username} likes thread {self.thread.id}'
+        return f'{self.user.email} likes thread {self.thread.id}'
 
 class ThreadReply(models.Model):
     thread = models.ForeignKey(Thread, related_name='replies', on_delete=models.CASCADE)
@@ -65,7 +65,7 @@ class ThreadReply(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
-        return f'{self.author.username} replied to thread {self.thread.id}'
+        return f'{self.author.email} replied to thread {self.thread.id}'
 
     def get_replies_count(self):
         return self.replies.count()

@@ -47,6 +47,7 @@ INSTALLED_APPS = [
     'events',
     # other apps
     'djoser',
+    'django_filters',
 ]
 
 MIDDLEWARE = [
