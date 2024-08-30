@@ -140,15 +140,20 @@ MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media/'
 
 # Static files (CSS, JavaScript, images)
-STATIC_URL = '/assets/'
+STATIC_URL = '/static/'
 
 STATICFILES_DIRS = [
-    BASE_DIR / "assets",
-    # "/var/www/static/",
+    BASE_DIR / "static",
 ]
 
-
 STATIC_ROOT = BASE_DIR / 'staticfiles'
+
+# Add this setting for development
+if DEBUG:
+    STATICFILES_DIRS = [BASE_DIR / "static"]
+else:
+    STATIC_ROOT = BASE_DIR / 'staticfiles'
+
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
 
 AUTHENTICATION_BACKENDS = [
