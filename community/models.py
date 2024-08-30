@@ -23,7 +23,7 @@ class Category(models.Model):
         verbose_name_plural = "Categories"
 
 class Thread(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    id = models.BigAutoField(primary_key=True)
     post = ResizedImageField(size=[1920, 1080], crop=['middle', 'center'], upload_to='posts/', blank=True, null=True)
     category = models.ForeignKey(Category, related_name='threads', on_delete=models.CASCADE, null=True, blank=True)
     content = models.TextField()
@@ -37,7 +37,7 @@ class Thread(models.Model):
 
     def save(self, *args, **kwargs):
         if not self.slug:
-            self.slug = slugify(str(self.id))
+            self.slug = str(uuid.uuid4())
         super(Thread, self).save(*args, **kwargs)
 
     def __str__(self):
