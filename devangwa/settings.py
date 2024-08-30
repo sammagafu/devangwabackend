@@ -142,13 +142,6 @@ MEDIA_ROOT = BASE_DIR / 'media/'
 # Static files (CSS, JavaScript, images)
 STATIC_URL = '/static/'
 
-STATICFILES_DIRS = [
-    BASE_DIR / "static",
-]
-
-STATIC_ROOT = BASE_DIR / 'staticfiles'
-
-# Add this setting for development
 if DEBUG:
     STATICFILES_DIRS = [BASE_DIR / "static"]
 else:
