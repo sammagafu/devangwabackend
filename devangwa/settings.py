@@ -141,11 +141,10 @@ MEDIA_ROOT = BASE_DIR / 'media/'
 
 # Static files (CSS, JavaScript, images)
 STATIC_URL = '/static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 if DEBUG:
     STATICFILES_DIRS = [BASE_DIR / "static"]
-else:
-    STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
 
