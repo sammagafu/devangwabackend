@@ -27,7 +27,7 @@ from .views import index
 
 urlpatterns = [
     # re_path(r'^.*$', index, name='index'),
-    path('admin/', admin.site.urls),
+    path('api/v1/admin/', admin.site.urls),
     path('api/v1/', include('course.urls')),
     path('api/v1/coaching/', include('coaching.urls')),
     path('api/v1/community/', include('community.urls')),
