@@ -3,6 +3,7 @@ from .models import Course, Module, Video, Document, Quiz, Question, Answer
 from .serializers import CourseSerializer, ModuleSerializer, VideoSerializer, DocumentSerializer, QuizSerializer, QuestionSerializer, AnswerSerializer
 from rest_framework.permissions import IsAuthenticatedOrReadOnly,IsAuthenticated,IsAdminUser
 from rest_framework.response import Response
+from rest_framework.decorators import action
 
 
 class CourseViewSet(viewsets.ModelViewSet):
@@ -18,6 +19,15 @@ class CourseViewSet(viewsets.ModelViewSet):
         course = self.get_object()
         course.enroll(request.user)
         serializer = self.get_serializer(course)
+        return Response(serializer.data)
+    
+    @action(detail=False, methods=['get'], permission_classes=[permissions.IsAuthenticated])
+    def enrolled(self, request):
+        """
+        Returns a list of courses the logged-in user is enrolled in.
+        """
+        enrolled_courses = Course.objects.filter(enrollments__user=request.user)
+        serializer = self.get_serializer(enrolled_courses, many=True)
         return Response(serializer.data)
 
     def get_permissions(self):
