@@ -1,6 +1,6 @@
 from rest_framework import viewsets
-from .models import Event, Participant 
-from .serializers import EventSerializer, ParticipantSerializer
+from .models import Event, Participant, Payment
+from .serializers import EventSerializer, ParticipantSerializer,PaymentSerializer
 from rest_framework.permissions import IsAuthenticatedOrReadOnly,IsAuthenticated,IsAdminUser
 
 
@@ -31,3 +31,8 @@ class EventViewSet(viewsets.ModelViewSet):
 class ParticipantViewSet(viewsets.ModelViewSet):
     queryset = Participant.objects.all()
     serializer_class = ParticipantSerializer
+
+class PaymentViewSet(viewsets.ModelViewSet):
+    queryset = Payment.objects.all()
+    serializer_class = PaymentSerializer
+    permission_classes = [IsAdminUser]

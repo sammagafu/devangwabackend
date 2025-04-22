@@ -2,6 +2,8 @@ from django.db import models
 from django.contrib.auth import get_user_model
 from django_resized import ResizedImageField
 from django.utils.text import slugify
+from decimal import Decimal
+
 
 
 
@@ -33,7 +35,7 @@ class Course(models.Model):
 
     @property
     def final_price(self):
-        return self.price * (1 - self.discount_percentage / 100)
+        return self.price * (Decimal(1) - self.discount_percentage / Decimal(100))
     
     def enroll(self, user):
         if not self.enrollments.filter(user=user).exists():

@@ -4,7 +4,7 @@ from . import views
 
 router = DefaultRouter()
 router.register(r'events', views.EventViewSet)
-# router.register(r'sessions', views.SessionViewSet)
+router.register(r'payments', views.PaymentViewSet)
 router.register(r'participants', views.ParticipantViewSet)
 
 urlpatterns = [

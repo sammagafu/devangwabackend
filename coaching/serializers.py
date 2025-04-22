@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Event, Participant
+from .models import Event, Participant,Payment
 from django.contrib.auth import get_user_model
 
 User = get_user_model()
@@ -22,3 +22,12 @@ class ParticipantSerializer(serializers.ModelSerializer):
     class Meta:
         model = Participant
         fields = ['id', 'user', 'event', 'joined_at']
+
+        
+class PaymentSerializer(serializers.ModelSerializer):
+    user = UserSerializer(read_only=True)
+    event = EventSerializer(read_only=True)
+
+    class Meta:
+        model = Payment
+        fields = ['id', 'user', 'event', 'amount', 'payment_date', 'is_successful']

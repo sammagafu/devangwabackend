@@ -17,7 +17,6 @@ from datetime import timedelta
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/4.2/howto/deployment/checklist/
 
@@ -29,9 +28,7 @@ DEBUG = True
 
 ALLOWED_HOSTS = ['*']
 
-
 # Application definition
-
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
@@ -41,22 +38,22 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'rest_framework',
     'rest_framework_simplejwt',
+    'corsheaders',  # Ensure corsheaders is listed
+    'djoser',       # Djoser for user management
+    'django_filters',
     'accounts',
     'course',
     'coaching',
     'community',
     'events',
-    # other apps
-    'djoser',
-    'django_filters',
 ]
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
-    "corsheaders.middleware.CorsMiddleware",
+    'corsheaders.middleware.CorsMiddleware',  # Must be before CommonMiddleware
     'django.middleware.common.CommonMiddleware',
-    # 'django.middleware.csrf.CsrfViewMiddleware',
+    'django.middleware.csrf.CsrfViewMiddleware',  # Re-enabled for security
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
@@ -82,21 +79,8 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'devangwa.wsgi.application'
 
-
 # Database
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
-
-# DATABASES = {
-#     'default': {
-#         'ENGINE': 'django.db.backends.postgresql_psycopg2',
-#         'NAME': 'devangwa',
-#         'USER': 'devangwa',
-#         'PASSWORD': 'deV@ngwa-2024',
-#         'HOST': 'localhost',
-#         'PORT': '',
-#     }
-# }
-
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
@@ -104,10 +88,8 @@ DATABASES = {
     }
 }
 
-
 # Password validation
 # https://docs.djangoproject.com/en/4.2/ref/settings/#auth-password-validators
-
 AUTH_PASSWORD_VALIDATORS = [
     {
         'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
@@ -123,22 +105,16 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
-
 # Internationalization
 # https://docs.djangoproject.com/en/4.2/topics/i18n/
-
 LANGUAGE_CODE = 'en-us'
-
 TIME_ZONE = 'UTC'
-
 USE_I18N = True
-
 USE_TZ = True
-APPEND_SLASH=False
+APPEND_SLASH = False
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
-
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 AUTH_USER_MODEL = 'accounts.CustomUser'
 
@@ -153,17 +129,17 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 if DEBUG:
     STATICFILES_DIRS = [BASE_DIR / "static"]
 
-# https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
-
+# Authentication backends
 AUTHENTICATION_BACKENDS = [
     'accounts.backend.EmailBackend',
-    'django.contrib.auth.backends.ModelBackend',  # fallback to default backend
+    'django.contrib.auth.backends.ModelBackend',  # Fallback to default backend
 ]
+
+# REST Framework configuration
 REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
-        'rest_framework.permissions.AllowAny',
+        'rest_framework.permissions.AllowAny',  # Allows open access by default
     ],
-
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',
     ),
@@ -172,29 +148,48 @@ REST_FRAMEWORK = {
         'rest_framework.parsers.MultiPartParser',
     ]
 }
+
+# Simple JWT configuration
 SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(days=1),
-    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
+    'ACCESS_TOKEN_LIFETIME': timedelta(days=1),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
 }
 
-
+# Djoser configuration
 DJOSER = {
     'LOGIN_FIELD': 'email',
     'SERIALIZERS': {
         'user': 'accounts.serializers.CustomUserSerializer',
         'current_user': 'accounts.serializers.CustomUserSerializer',
         'user_create': 'accounts.serializers.CustomUserCreateSerializer',
-        # 'current_user': 'accounts.serializers.CurrentUserSerializer'
-    }
+    },
+    'PERMISSIONS': {
+        'user_create': ['rest_framework.permissions.AllowAny'],  # Allow anyone to create an account
+        'user': ['rest_framework.permissions.IsAuthenticated'],  # Restrict user access to authenticated users
+        'user_delete': ['rest_framework.permissions.IsAuthenticated'],  # Restrict deletion to authenticated users
+    },
+    'SEND_ACTIVATION_EMAIL': False,  # Disable activation email for open registration
+    'SEND_CONFIRMATION_EMAIL': False,  # Optional: disable confirmation email
+    'PASSWORD_RESET_CONFIRM_URL': 'password/reset/confirm/{uid}/{token}',  # For password reset
 }
 
-
+# CORS configuration
 CORS_ALLOWED_ORIGINS = [
-    "http://devangwacoaching.com",
-    # "https://sub.example.com",
-    "http://localhost:8080",
-    "http://127.0.0.1:8080",
-    "http://127.0.0.1:9000",
-    "http://127.0.0.1:5173",
-    "http://localhost:5173",
+    'http://devangwacoaching.com',
+    'http://localhost:8080',
+    'http://127.0.0.1:8080',
+    'http://127.0.0.1:9000',
+    'http://127.0.0.1:5173',
+    'http://localhost:5173',
+]
+
+# CORS settings for development
+CORS_ALLOW_ALL_ORIGINS = DEBUG  # Allows all origins in DEBUG mode for development
+CORS_ALLOW_CREDENTIALS = True  # Allow credentials (e.g., cookies, auth headers)
+
+# CSRF settings
+CSRF_TRUSTED_ORIGINS = [
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
+    'http://devangwacoaching.com',
 ]
