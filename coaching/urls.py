@@ -4,8 +4,10 @@ from . import views
 
 router = DefaultRouter()
 router.register(r'events', views.EventViewSet)
-router.register(r'payments', views.PaymentViewSet)
 router.register(r'participants', views.ParticipantViewSet)
+router.register(r'payments', views.PaymentViewSet)
+router.register(r'speakers', views.SpeakerViewSet)
+router.register(r'schedules', views.ScheduleViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),

@@ -1,47 +1,82 @@
 from rest_framework import serializers
-from .models import Course, Module, Video, Document, Quiz, Question, Answer, Enrollment
+from .models import Course, Module, Video, Document, Quiz, Question, Answer, Enrollment, VideoProgress, DocumentProgress, QuizAttempt, ModuleProgress, FAQ, Tags
 from django.contrib.auth import get_user_model
 
 User = get_user_model()
 
+# User Serializer
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ['id', 'email','full_name']
+        fields = ['id', 'email', 'full_name']
+
+# Tags Serializer
+class TagsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Tags
+        fields = ['id', 'tag', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+# FAQ Serializer
+class FAQSerializer(serializers.ModelSerializer):
+    is_asked_by = UserSerializer(read_only=True)
+    is_answered_by = UserSerializer(read_only=True)
+
+    class Meta:
+        model = FAQ
+        fields = [
+            'id', 'course', 'question', 'answer', 'created_at', 'replied_at',
+            'is_answered', 'is_visible', 'is_edited_at', 'is_asked_by', 'is_answered_by'
+        ]
+        read_only_fields = ['id', 'created_at', 'replied_at', 'is_edited_at', 'is_asked_by', 'is_answered_by']
+
+    def create(self, validated_data):
+        request = self.context.get('request')
+        validated_data['is_asked_by'] = request.user if request else None
+        if validated_data.get('is_answered'):
+            validated_data['is_answered_by'] = request.user if request else None
+        return super().create(validated_data)
+
+# Answer Serializer
 class AnswerSerializer(serializers.ModelSerializer):
     class Meta:
         model = Answer
         fields = ['id', 'text', 'is_correct']
         read_only_fields = ['id']
 
+# Question Serializer
 class QuestionSerializer(serializers.ModelSerializer):
     answers = AnswerSerializer(many=True, read_only=True)
 
     class Meta:
         model = Question
         fields = ['id', 'text', 'explanation', 'answers']
-        read_only_fields = ['id', 'answers']
+        read_only_fields = ['id']
 
+# Quiz Serializer
 class QuizSerializer(serializers.ModelSerializer):
     questions = QuestionSerializer(many=True, read_only=True)
 
     class Meta:
         model = Quiz
         fields = ['id', 'title', 'slug', 'description', 'pass_mark', 'total_marks', 'time_limit', 'questions']
-        read_only_fields = ['id', 'questions']
+        read_only_fields = ['id', 'slug']
 
-class DocumentSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Document
-        fields = ['id', 'title', 'slug', 'document_file']
-        read_only_fields = ['id']
-
+# Video Serializer
 class VideoSerializer(serializers.ModelSerializer):
     class Meta:
         model = Video
         fields = ['id', 'title', 'slug', 'video_url']
-        read_only_fields = ['id','module']
+        read_only_fields = ['id', 'slug']
 
+# Document Serializer
+class DocumentSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Document
+        fields = ['id', 'title', 'slug', 'document_file']
+        read_only_fields = ['id', 'slug']
+
+# Module Serializer
 class ModuleSerializer(serializers.ModelSerializer):
     videos = VideoSerializer(many=True, read_only=True)
     documents = DocumentSerializer(many=True, read_only=True)
@@ -49,34 +84,113 @@ class ModuleSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Module
-        fields = ['id', 'title', 'slug', 'order', 'description', 'videos', 'documents', 'quizzes']
-        read_only_fields = ['id', 'videos', 'documents', 'quizzes']
+        fields = [
+            'id', 'title', 'slug', 'course', 'order', 'description', 'videos', 'documents', 'quizzes',
+            'total_videos', 'total_documents', 'total_quizzes'
+        ]
+        read_only_fields = [
+            'id', 'slug', 'videos', 'documents', 'quizzes', 'total_videos', 'total_documents', 'total_quizzes'
+        ]
 
-class EnrollmentSerializer(serializers.ModelSerializer):
-    user = UserSerializer()
-    course = serializers.StringRelatedField()
-
-    class Meta:
-        model = Enrollment
-        fields = ['id', 'user', 'course', 'enrolled_at']
-        read_only_fields = ['id', 'user', 'course', 'enrolled_at']
-
+# Course Serializer
 class CourseSerializer(serializers.ModelSerializer):
     instructor = UserSerializer(read_only=True)
     modules = ModuleSerializer(many=True, read_only=True)
-    enrollments = EnrollmentSerializer(many=True, read_only=True)
+    faqs = FAQSerializer(many=True, required=False)
+    tags = TagsSerializer(many=True, required=False)
 
     class Meta:
         model = Course
-        fields = ['id', 'title', 'slug', 'description', 'instructor', 'price', 'ispublished', 'cover', 'created_at', 'updated_at', 'discount_percentage', 'discount_deadline', 'modules', 'enrollments', 'final_price']
-        read_only_fields = ['id', 'modules', 'enrollments', 'final_price']
+        fields = [
+            'id', 'title', 'slug', 'description', 'instructor', 'price', 'ispublished', 'cover',
+            'created_at', 'updated_at', 'discount_percentage', 'discount_deadline', 'total_modules',
+            'total_videos', 'total_documents', 'total_quizzes', 'tags', 'is_featured', 'modules',
+            'faqs', 'final_price'
+        ]
+        read_only_fields = [
+            'id', 'slug', 'instructor', 'created_at', 'updated_at', 'final_price',
+            'total_modules', 'total_videos', 'total_documents', 'total_quizzes', 'modules'
+        ]
 
+    def create(self, validated_data):
+        faqs_data = validated_data.pop('faqs', [])
+        tags_data = validated_data.pop('tags', [])
+        course = Course.objects.create(**validated_data)
+        for faq_data in faqs_data:
+            FAQ.objects.create(course=course, **faq_data)
+        for tag_data in tags_data:
+            tag, created = Tags.objects.get_or_create(tag=tag_data['tag'])
+            course.tags.add(tag)
+        return course
 
+    def update(self, validated_data):
+        faqs_data = validated_data.pop('faqs', [])
+        tags_data = validated_data.pop('tags', [])
+        instance = super().update(instance=self.instance, validated_data=validated_data)
+        instance.faqs.all().delete()  # Clear existing FAQs
+        for faq_data in faqs_data:
+            FAQ.objects.create(course=instance, **faq_data)
+        instance.tags.clear()  # Clear existing tags
+        for tag_data in tags_data:
+            tag, created = Tags.objects.get_or_create(tag=tag_data['tag'])
+            instance.tags.add(tag)
+        return instance
+
+# Enrollment Serializer
 class EnrollmentSerializer(serializers.ModelSerializer):
-    user = UserSerializer()
-    course = serializers.StringRelatedField()
+    user = UserSerializer(read_only=True)
+    course = CourseSerializer(read_only=True)
+    last_accessed_module = serializers.SerializerMethodField()
 
     class Meta:
         model = Enrollment
-        fields = ['id', 'user', 'course', 'enrolled_at']
-        read_only_fields = ['id', 'user', 'course', 'enrolled_at']
+        fields = [
+            'id', 'user', 'course', 'enrolled_at', 'completion_percentage', 'is_completed',
+            'started_at', 'completed_at', 'last_accessed_module', 'progress_notes', 'certificate_issued'
+        ]
+        read_only_fields = [
+            'id', 'user', 'course', 'enrolled_at', 'completion_percentage', 'is_completed',
+            'started_at', 'completed_at', 'certificate_issued'
+        ]
+
+    def get_last_accessed_module(self, obj):
+        if obj.last_accessed_module:
+            return {'id': obj.last_accessed_module.id, 'title': obj.last_accessed_module.title}
+        return None
+
+# VideoProgress Serializer
+class VideoProgressSerializer(serializers.ModelSerializer):
+    video = serializers.PrimaryKeyRelatedField(queryset=Video.objects.all())
+
+    class Meta:
+        model = VideoProgress
+        fields = ['id', 'video', 'watched', 'watched_at', 'last_position']
+        read_only_fields = ['id', 'watched_at']
+
+# DocumentProgress Serializer
+class DocumentProgressSerializer(serializers.ModelSerializer):
+    document = serializers.PrimaryKeyRelatedField(queryset=Document.objects.all())
+
+    class Meta:
+        model = DocumentProgress
+        fields = ['id', 'document', 'read', 'read_at', 'page_number']
+        read_only_fields = ['id', 'read_at']
+
+# QuizAttempt Serializer
+class QuizAttemptSerializer(serializers.ModelSerializer):
+    quiz = serializers.PrimaryKeyRelatedField(queryset=Quiz.objects.all())
+
+    class Meta:
+        model = QuizAttempt
+        fields = ['id', 'quiz', 'score', 'passed', 'attempted_at', 'user_answers']
+        read_only_fields = ['id', 'attempted_at']
+
+# ModuleProgress Serializer
+class ModuleProgressSerializer(serializers.ModelSerializer):
+    module = serializers.PrimaryKeyRelatedField(queryset=Module.objects.all())
+    enrollment = serializers.PrimaryKeyRelatedField(queryset=Enrollment.objects.all())
+
+    class Meta:
+        model = ModuleProgress
+        fields = ['id', 'enrollment', 'module', 'is_completed']
+        read_only_fields = ['id']

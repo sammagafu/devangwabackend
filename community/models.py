@@ -20,7 +20,18 @@ class Category(models.Model):
         return self.name
 
     class Meta:
-        verbose_name_plural = "Categories"
+        verbose_name_plural = "Communities"
+
+class CommunityFollowers(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    community = models.ForeignKey(Category, related_name='followers', on_delete=models.CASCADE)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('user', 'community')
+
+    def __str__(self):
+        return f'{self.user.email} follows {self.community.name}'
 
 class Thread(models.Model):
     id = models.BigAutoField(primary_key=True)
@@ -31,17 +42,25 @@ class Thread(models.Model):
     starter = models.ForeignKey(User, on_delete=models.CASCADE)
     created_at = models.DateTimeField(auto_now_add=True)
     views = models.PositiveIntegerField(default=0)
+    is_community_post = models.BooleanField(default=False, editable=False)
 
     class Meta:
-        ordering = ['-created_at'] 
+        ordering = ['-created_at']
 
     def save(self, *args, **kwargs):
         if not self.slug:
-            self.slug = str(uuid.uuid4())
+            base_slug = str(uuid.uuid4())[:8]
+            self.slug = base_slug
+            counter = 1
+            while Thread.objects.filter(slug=self.slug).exclude(id=self.id).exists():
+                self.slug = f"{base_slug}-{counter}"
+                counter += 1
+        self.is_community_post = self.category is not None
         super(Thread, self).save(*args, **kwargs)
 
     def __str__(self):
-        return f'Thread started by {self.starter}'
+        post_type = "Community" if self.is_community_post else "Normal"
+        return f'{post_type} Thread started by {self.starter}'
 
     def increase_views(self):
         self.views += 1
@@ -63,12 +82,13 @@ class ThreadReply(models.Model):
     author = models.ForeignKey(User, on_delete=models.CASCADE)
     content = models.TextField()
     created_at = models.DateTimeField(auto_now_add=True)
+    parent = models.ForeignKey('self', null=True, blank=True, related_name='child_replies', on_delete=models.CASCADE)
 
     def __str__(self):
         return f'{self.author.email} replied to thread {self.thread.id}'
 
     def get_replies_count(self):
-        return self.replies.count()
+        return self.child_replies.count()
 
 class PostLike(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)

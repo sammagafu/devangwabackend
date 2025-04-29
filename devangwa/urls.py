@@ -31,6 +31,8 @@ urlpatterns = [
     path('api/v1/', include('course.urls')),
     path('api/v1/coaching/', include('coaching.urls')),
     path('api/v1/community/', include('community.urls')),
+    path('api/v1/auth/', include('accounts.urls')),
+
     re_path(r'^api/v1/auth/', include('djoser.urls')),
     # re_path(r'^api/v1/auth/', include('djoser.urls.jwt')),
     path('api/v1/auth/jwt/create/', TokenObtainPairView.as_view(), name='token_obtain_pair'),

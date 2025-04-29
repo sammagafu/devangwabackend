@@ -21,19 +21,19 @@ class Event(models.Model):
     start_time = models.DateTimeField()
     end_time = models.DateTimeField()
     location = models.CharField(max_length=255, blank=True, null=True)
-    created_by = models.ForeignKey(User, on_delete=models.CASCADE)
+    created_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name='events_created')
     price = models.DecimalField(max_digits=10, decimal_places=2)
     discount_percentage = models.DecimalField(max_digits=5, decimal_places=2, default=0.00)
-    discount_deadline = models.DateTimeField(null=True,blank=True)
+    discount_deadline = models.DateTimeField(null=True, blank=True)
     registration_deadline = models.DateTimeField()
-    cover = ResizedImageField(size=[1920, 1080], crop=['middle', 'center'], upload_to='event/cover/',default="cover-img.jpg")
-    
+    cover = ResizedImageField(size=[1920, 1080], crop=['middle', 'center'], upload_to='event/cover/', default="cover-img.jpg")
+
     class Meta:
         ordering = ["start_time"]
-        
+
     def __str__(self):
         return self.title
-    
+
     def save(self, *args, **kwargs):
         if not self.slug:
             self.slug = slugify(self.title)
@@ -42,18 +42,34 @@ class Event(models.Model):
         if self.registration_deadline >= self.start_time:
             raise ValidationError("Registration deadline must be before the event start time.")
         super().save(*args, **kwargs)
-    
+
     @property
     def final_price(self):
         discount_percentage_decimal = Decimal(str(self.discount_percentage))
         discount_factor = Decimal('1') - (discount_percentage_decimal / Decimal('100'))
         return self.price * discount_factor
-    
+
     def attend(self, user):
         participant, created = Participant.objects.get_or_create(session=self, user=user)
         return participant
 
+class Speaker(models.Model):
+    event = models.ForeignKey(Event, related_name='speakers', on_delete=models.CASCADE)
+    name = models.CharField(max_length=255)
+    avatar = models.ImageField(upload_to='speakers/', null=True, blank=True)
 
+    def __str__(self):
+        return self.name
+
+class Schedule(models.Model):
+    event = models.ForeignKey(Event, related_name='schedules', on_delete=models.CASCADE)
+    day = models.DateField()
+    title = models.CharField(max_length=255)
+    time = models.CharField(max_length=50)  # e.g., "9:00 AM - 10:00 AM"
+    speakers = models.ManyToManyField(Speaker, blank=True)
+
+    def __str__(self):
+        return f"{self.title} on {self.day}"
 
 class Participant(models.Model):
     session = models.ForeignKey(Event, related_name='event', on_delete=models.CASCADE)
@@ -63,10 +79,8 @@ class Participant(models.Model):
     def __str__(self):
         if self.user:
             return f"{self.user.full_name} in {self.session}"
-        else:
-            return f"{self.participant_name} in {self.session}"
-        
-        
+        return f"Unknown in {self.session}"
+
 class Payment(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     event = models.ForeignKey(Event, on_delete=models.CASCADE)

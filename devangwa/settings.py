@@ -45,7 +45,6 @@ INSTALLED_APPS = [
     'course',
     'coaching',
     'community',
-    'events',
 ]
 
 MIDDLEWARE = [
