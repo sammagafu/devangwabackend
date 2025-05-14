@@ -1,3 +1,4 @@
+# course/serializers.py
 from rest_framework import serializers
 from .models import Course, Module, Video, Document, Quiz, Question, Answer, Enrollment, VideoProgress, DocumentProgress, QuizAttempt, ModuleProgress, FAQ, Tags
 from django.contrib.auth import get_user_model
@@ -123,17 +124,34 @@ class CourseSerializer(serializers.ModelSerializer):
             course.tags.add(tag)
         return course
 
-    def update(self, validated_data):
+    def update(self, instance, validated_data):
+        # Handle related fields
         faqs_data = validated_data.pop('faqs', [])
         tags_data = validated_data.pop('tags', [])
-        instance = super().update(instance=self.instance, validated_data=validated_data)
+
+        # Update scalar fields
+        instance.title = validated_data.get('title', instance.title)
+        instance.description = validated_data.get('description', instance.description)
+        instance.price = validated_data.get('price', instance.price)
+        instance.ispublished = validated_data.get('ispublished', instance.ispublished)
+        instance.discount_percentage = validated_data.get('discount_percentage', instance.discount_percentage)
+        instance.discount_deadline = validated_data.get('discount_deadline', instance.discount_deadline)
+        instance.is_featured = validated_data.get('is_featured', instance.is_featured)
+        if 'cover' in validated_data:
+            instance.cover = validated_data['cover']
+        instance.save()
+
+        # Update FAQs
         instance.faqs.all().delete()  # Clear existing FAQs
         for faq_data in faqs_data:
             FAQ.objects.create(course=instance, **faq_data)
+
+        # Update Tags
         instance.tags.clear()  # Clear existing tags
         for tag_data in tags_data:
             tag, created = Tags.objects.get_or_create(tag=tag_data['tag'])
             instance.tags.add(tag)
+
         return instance
 
 # Enrollment Serializer
