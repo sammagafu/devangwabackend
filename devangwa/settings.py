@@ -45,6 +45,7 @@ INSTALLED_APPS = [
     'course',
     'coaching',
     'community',
+    'payment',
 ]
 
 MIDDLEWARE = [

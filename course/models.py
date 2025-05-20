@@ -5,6 +5,7 @@ from django.utils.text import slugify
 from decimal import Decimal
 from django.db.models import JSONField
 from django.utils import timezone
+import uuid
 
 User = get_user_model()
 
@@ -242,3 +243,24 @@ class Tags(models.Model):
 
     def __str__(self):
         return self.tag
+   
+class Payment(models.Model):
+    PAYMENT_METHODS = [
+        ('mpesa', 'M-Pesa'),
+        ('vodacom', 'Vodacom'),
+        ('airtel', 'Airtel'),
+        ('mtn', 'MTN'),
+        ('card', 'Card'),
+    ]
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='course_payments')
+    course = models.ForeignKey('Course', on_delete=models.CASCADE, null=True, blank=True)
+    enrollment = models.ForeignKey('Enrollment', on_delete=models.CASCADE, null=True, blank=True)
+    order_tracking_id = models.CharField(max_length=255, unique=True, default=uuid.uuid4)
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    currency = models.CharField(max_length=3, default='KES')
+    status = models.CharField(max_length=50, default='pending')  # pending, succeeded, failed
+    payment_method = models.CharField(max_length=20, choices=PAYMENT_METHODS, default='mpesa')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Payment {self.order_tracking_id} for {self.course.title if self.course else 'Unknown'}"

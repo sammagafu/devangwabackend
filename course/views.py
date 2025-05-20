@@ -1,15 +1,18 @@
+# course_app/views.py
 from rest_framework import viewsets, permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.exceptions import ValidationError
 from django.db.models import Prefetch
-from .models import Course, Module, Video, Document, Quiz, Question, Answer, Enrollment, VideoProgress, DocumentProgress, QuizAttempt, ModuleProgress, FAQ, Tags
+from .models import Course, Module, Video, Document, Quiz, Question, Answer, Enrollment, VideoProgress, DocumentProgress, QuizAttempt, ModuleProgress, FAQ, Tags, Payment
 from .serializers import (
     CourseSerializer, ModuleSerializer, VideoSerializer, DocumentSerializer,
     QuizSerializer, QuestionSerializer, AnswerSerializer, EnrollmentSerializer,
     VideoProgressSerializer, DocumentProgressSerializer, QuizAttemptSerializer,
     ModuleProgressSerializer, FAQSerializer, TagsSerializer
 )
+import uuid
+import re
 
 class CourseViewSet(viewsets.ModelViewSet):
     queryset = Course.objects.all()
@@ -21,13 +24,76 @@ class CourseViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated])
     def enroll(self, request, slug=None):
-        """Enroll the authenticated user in the course and return enrollment details."""
+        """Enroll the authenticated user in the course with manual payment confirmation."""
         course = self.get_object()
-        enrollment, created = Enrollment.objects.get_or_create(user=request.user, course=course)
-        if not created:
+        user = request.user
+
+        # Check if already enrolled
+        if Enrollment.objects.filter(user=user, course=course).exists():
             return Response({'detail': 'Already enrolled'}, status=400)
-        serializer = EnrollmentSerializer(enrollment)
-        return Response(serializer.data, status=201 if created else 200)
+
+        # Free course
+        if course.final_price <= 0:
+            enrollment = Enrollment.objects.create(user=user, course=course)
+            serializer = EnrollmentSerializer(enrollment)
+            return Response(serializer.data, status=201)
+
+        # Handle payment confirmation
+        order_tracking_id = request.data.get('order_tracking_id')
+        if order_tracking_id:
+            try:
+                payment = Payment.objects.get(order_tracking_id=order_tracking_id, user=user, course=course)
+                if payment.status == 'succeeded':
+                    return Response({'detail': 'Payment already processed'}, status=400)
+                # Simulate payment confirmation
+                payment.status = 'succeeded'
+                payment.save()
+                # Create enrollment
+                enrollment = Enrollment.objects.create(user=user, course=course)
+                payment.enrollment = enrollment
+                payment.save()
+                serializer = EnrollmentSerializer(enrollment)
+                return Response(serializer.data, status=201)
+            except Payment.DoesNotExist:
+                return Response({'detail': 'Invalid or unauthorized payment'}, status=400)
+            except Exception as e:
+                return Response({'detail': f'Error confirming payment: {str(e)}'}, status=500)
+
+        # Initiate payment
+        try:
+            phone_number = request.data.get('phone_number')
+            card_number = request.data.get('card_number')
+            payment_method = request.data.get('payment_method', 'mpesa')
+            if payment_method not in ['mpesa', 'vodacom', 'airtel', 'mtn', 'card']:
+                raise ValidationError("Invalid payment method")
+            if payment_method == 'card' and not card_number:
+                raise ValidationError("Card number is required for card payments")
+            if payment_method != 'card' and not phone_number:
+                raise ValidationError("Phone number is required for mobile payments")
+            if phone_number and not re.match(r'^\+254\d{9}$', phone_number):
+                raise ValidationError("Invalid phone number format. Use +254 followed by 9 digits.")
+            if card_number and not re.match(r'^\d{16}$', card_number):
+                raise ValidationError("Invalid card number format. Use 16 digits.")
+            order_tracking_id = str(uuid.uuid4())
+            # Create pending payment
+            Payment.objects.create(
+                user=user,
+                course=course,
+                order_tracking_id=order_tracking_id,
+                amount=course.final_price,
+                currency='KES',
+                status='pending',
+                payment_method=payment_method
+            )
+            return Response({
+                'order_tracking_id': order_tracking_id,
+                'enrollment_pending': True,
+                'instructions': f'Please confirm the {payment_method} payment to complete enrollment.'
+            }, status=200)
+        except ValidationError as e:
+            return Response({'detail': str(e)}, status=400)
+        except Exception as e:
+            return Response({'detail': f'An error occurred: {str(e)}'}, status=500)
 
     @action(detail=False, methods=['get'], permission_classes=[permissions.IsAuthenticated])
     def enrolled(self, request):
@@ -50,13 +116,9 @@ class CourseViewSet(viewsets.ModelViewSet):
     def user_progress(self, request):
         """Return enrolled courses, completed courses, documents read, and quizzes done for the user."""
         user = request.user
-        
-        # Fetch enrollments with related course data
         enrollments = Enrollment.objects.filter(user=user).select_related('course').prefetch_related(
             Prefetch('course__modules', queryset=Module.objects.all())
         )
-        
-        # Prepare enrolled and completed courses
         enrolled_courses = []
         completed_courses = []
         for enrollment in enrollments:
@@ -66,14 +128,12 @@ class CourseViewSet(viewsets.ModelViewSet):
             if enrollment.is_completed:
                 completed_courses.append(course_data)
 
-        # Fetch documents read
         documents_read = DocumentProgress.objects.filter(user=user, read=True).select_related('document')
         documents_read_data = [
             {'id': dp.document.id, 'title': dp.document.title, 'read_at': dp.read_at}
             for dp in documents_read
         ]
 
-        # Fetch quizzes done
         quizzes_done = QuizAttempt.objects.filter(user=user).select_related('quiz')
         quizzes_done_data = QuizAttemptSerializer(quizzes_done, many=True).data
 
@@ -84,7 +144,7 @@ class CourseViewSet(viewsets.ModelViewSet):
             'quizzes_done': quizzes_done_data,
         }
         return Response(response_data)
-    
+
     @action(detail=False, methods=['get'], permission_classes=[permissions.IsAuthenticated])
     def drafts(self, request):
         """Return a list of unpublished (draft) courses for the authenticated user."""
@@ -119,7 +179,6 @@ class ModuleViewSet(viewsets.ModelViewSet):
             raise ValidationError("Course does not exist")
 
     def perform_destroy(self, instance):
-        """Delete a module and update course totals."""
         course = instance.course
         instance.delete()
         if course:
@@ -129,9 +188,8 @@ class ModuleViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['post'], permission_classes=[permissions.IsAdminUser])
     def bulk_create(self, request):
-        """Create multiple modules for a course in a single request."""
-        course_id = request.data.get('course')
-        modules_data = request.data.get('modules', [])
+        course_id = self.request.data.get('course')
+        modules_data = self.request.data.get('modules', [])
         if not course_id:
             raise ValidationError("Course ID is required")
         try:
@@ -180,7 +238,6 @@ class VideoViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated])
     def update_progress(self, request, pk=None):
-        """Update or create video progress for the authenticated user."""
         video = self.get_object()
         progress, created = VideoProgress.objects.get_or_create(user=request.user, video=video)
         serializer = VideoProgressSerializer(progress, data=request.data, partial=True)
@@ -216,7 +273,6 @@ class DocumentViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated])
     def update_progress(self, request, pk=None):
-        """Update or create document progress for the authenticated user."""
         document = self.get_object()
         progress, created = DocumentProgress.objects.get_or_create(user=request.user, document=document)
         serializer = DocumentProgressSerializer(progress, data=request.data, partial=True)
@@ -252,7 +308,6 @@ class QuizViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated])
     def attempt(self, request, pk=None):
-        """Record a quiz attempt for the authenticated user."""
         quiz = self.get_object()
         serializer = QuizAttemptSerializer(data=request.data, context={'request': request})
         if serializer.is_valid():

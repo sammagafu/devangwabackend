@@ -5,6 +5,7 @@ from django.core.exceptions import ValidationError
 from decimal import Decimal
 from django_resized import ResizedImageField
 from django.contrib.auth import get_user_model
+import uuid
 
 User = get_user_model()
 
@@ -82,11 +83,21 @@ class Participant(models.Model):
         return f"Unknown in {self.session}"
 
 class Payment(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE)
-    event = models.ForeignKey(Event, on_delete=models.CASCADE)
+    PAYMENT_METHODS = [
+        ('mpesa', 'M-Pesa'),
+        ('vodacom', 'Vodacom'),
+        ('airtel', 'Airtel'),
+        ('mtn', 'MTN'),
+        ('card', 'Card'),
+    ]
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='event_payments')
+    event = models.ForeignKey('Event', on_delete=models.CASCADE, null=True, blank=True)
     amount = models.DecimalField(max_digits=10, decimal_places=2)
+    order_tracking_id = models.CharField(max_length=255, unique=True, default=uuid.uuid4)
+    currency = models.CharField(max_length=3, default='KES')
     payment_date = models.DateTimeField(auto_now_add=True)
     is_successful = models.BooleanField(default=False)
+    payment_method = models.CharField(max_length=20, choices=PAYMENT_METHODS, default='mpesa')
 
     def __str__(self):
-        return f"{self.user.username} - {self.event.title} - {self.amount}"
+        return f"{self.user.username} - {self.event.title if self.event else 'Unknown'} - {self.amount}"
