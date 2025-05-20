@@ -2,7 +2,7 @@
 from rest_framework import serializers
 from .models import Course, Module, Video, Document, Quiz, Question, Answer, Enrollment, VideoProgress, DocumentProgress, QuizAttempt, ModuleProgress, FAQ, Tags
 from django.contrib.auth import get_user_model
-
+from django.utils.text import slugify
 User = get_user_model()
 
 # User Serializer
@@ -77,22 +77,41 @@ class DocumentSerializer(serializers.ModelSerializer):
         fields = ['id', 'title', 'slug', 'document_file']
         read_only_fields = ['id', 'slug']
 
-# Module Serializer
 class ModuleSerializer(serializers.ModelSerializer):
-    videos = VideoSerializer(many=True, read_only=True)
-    documents = DocumentSerializer(many=True, read_only=True)
-    quizzes = QuizSerializer(many=True, read_only=True)
-
     class Meta:
         model = Module
-        fields = [
-            'id', 'title', 'slug', 'course', 'order', 'description', 'videos', 'documents', 'quizzes',
-            'total_videos', 'total_documents', 'total_quizzes'
-        ]
-        read_only_fields = [
-            'id', 'slug', 'videos', 'documents', 'quizzes', 'total_videos', 'total_documents', 'total_quizzes'
-        ]
+        fields = ['id', 'title', 'description', 'order']  # Exclude slug
 
+    def validate(self, data):
+        title = data.get('title')
+        course_id = self.context['course_id']
+        instance = self.instance
+
+        if title:
+            slug = slugify(title)
+            # Check for slug uniqueness within the course
+            queryset = Module.objects.filter(course_id=course_id, slug=slug)
+            if instance:
+                queryset = queryset.exclude(id=instance.id)
+
+            if queryset.exists():
+                # Append counter to ensure unique slug
+                counter = 1
+                while Module.objects.filter(course_id=course_id, slug=f"{slug}-{counter}").exists():
+                    counter += 1
+                data['slug'] = f"{slug}-{counter}"
+            else:
+                data['slug'] = slug
+
+        return data
+
+    def create(self, validated_data):
+        validated_data['course_id'] = self.context['course_id']
+        return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        return super().update(instance, validated_data)
+    
 # Course Serializer
 class CourseSerializer(serializers.ModelSerializer):
     instructor = UserSerializer(read_only=True)

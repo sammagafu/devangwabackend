@@ -1,5 +1,5 @@
 # course_app/views.py
-from rest_framework import viewsets, permissions
+from rest_framework import viewsets, permissions,generics,status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.exceptions import ValidationError
@@ -164,61 +164,49 @@ class CourseViewSet(viewsets.ModelViewSet):
 class ModuleViewSet(viewsets.ModelViewSet):
     queryset = Module.objects.all()
     serializer_class = ModuleSerializer
-    lookup_field = "slug"
 
-    def perform_create(self, serializer):
-        course_id = self.request.data.get('course')
-        if not course_id:
-            raise ValidationError("Course ID is required")
-        try:
-            course = Course.objects.get(id=course_id)
-            serializer.save(course=course)
-            course.total_modules = course.modules.count()
-            course.save()
-        except Course.DoesNotExist:
-            raise ValidationError("Course does not exist")
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        # Pass course_id from request data or URL
+        course_id = self.request.data.get('course') or self.request.query_params.get('course')
+        if course_id:
+            context['course_id'] = course_id
+        return context
 
-    def perform_destroy(self, instance):
-        course = instance.course
-        instance.delete()
-        if course:
-            course.total_modules = course.modules.count()
-            course.save()
-        return Response(status=204)
+    def create(self, request, *args, **kwargs):
+        # Handle single module creation
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
-    @action(detail=False, methods=['post'], permission_classes=[permissions.IsAdminUser])
+    def update(self, request, *args, **kwargs):
+        # Handle single module update
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['post'], url_path='bulk_create')
     def bulk_create(self, request):
-        course_id = self.request.data.get('course')
-        modules_data = self.request.data.get('modules', [])
-        if not course_id:
-            raise ValidationError("Course ID is required")
-        try:
-            course = Course.objects.get(id=course_id)
-        except Course.DoesNotExist:
-            raise ValidationError("Course does not exist")
-
+        course_id = request.data.get('course')
+        modules_data = request.data.get('modules', [])
         created_modules = []
-        errors = []
-        for index, module_data in enumerate(modules_data):
-            serializer = ModuleSerializer(data=module_data, context={'request': request})
-            if serializer.is_valid():
-                serializer.save(course=course)
-                created_modules.append(serializer.data)
-            else:
-                errors.append({f"module_{index}": serializer.errors})
 
-        if errors:
-            return Response({"errors": errors}, status=400)
-        course.total_modules = course.modules.count()
-        course.save()
-        return Response(created_modules, status=201)
+        for module_data in modules_data:
+            if module_data.get('id'):
+                # Skip modules with IDs (handled by update)
+                continue
 
-    def get_permissions(self):
-        if self.action in ['create', 'update', 'partial_update', 'destroy', 'bulk_create']:
-            self.permission_classes = [permissions.IsAdminUser]
-        else:
-            self.permission_classes = [permissions.IsAuthenticatedOrReadOnly]
-        return super().get_permissions()
+            serializer = self.get_serializer(data=module_data, context={'course_id': course_id})
+            serializer.is_valid(raise_exception=True)
+            module = serializer.save()
+            created_modules.append(serializer.data)
+
+        return Response(created_modules, status=status.HTTP_201_CREATED)
 
 class VideoViewSet(viewsets.ModelViewSet):
     queryset = Video.objects.all()
