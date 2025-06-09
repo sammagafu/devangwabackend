@@ -1,36 +1,31 @@
 from django.db import models
-from django.utils.text import slugify
-from django.utils.crypto import get_random_string
-from django.core.exceptions import ValidationError
-from decimal import Decimal
-from django_resized import ResizedImageField
 from django.contrib.auth import get_user_model
+from django.contrib.contenttypes.fields import GenericRelation
+from django.core.exceptions import ValidationError
+from django.utils import timezone
+from django.utils.text import slugify
+from payments.models import Payment
 import uuid
 
 User = get_user_model()
 
 class Event(models.Model):
-    EVENT_TYPE_CHOICES = [
-        ('online', 'Online'),
-        ('on_premises', 'On Premises'),
-    ]
-
     title = models.CharField(max_length=255)
     slug = models.SlugField(max_length=255, unique=True, blank=True)
-    description = models.TextField()
-    event_type = models.CharField(max_length=12, choices=EVENT_TYPE_CHOICES)
+    description = models.TextField(blank=True)
+    final_price = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    created_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name='events')
+    registration_deadline = models.DateTimeField()
     start_time = models.DateTimeField()
     end_time = models.DateTimeField()
-    location = models.CharField(max_length=255, blank=True, null=True)
-    created_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name='events_created')
-    price = models.DecimalField(max_digits=10, decimal_places=2)
-    discount_percentage = models.DecimalField(max_digits=5, decimal_places=2, default=0.00)
-    discount_deadline = models.DateTimeField(null=True, blank=True)
-    registration_deadline = models.DateTimeField()
-    cover = ResizedImageField(size=[1920, 1080], crop=['middle', 'center'], upload_to='event/cover/', default="cover-img.jpg")
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+    payments = GenericRelation(Payment, related_query_name='event')
 
     class Meta:
-        ordering = ["start_time"]
+        indexes = [
+            models.Index(fields=['slug']),
+        ]
 
     def __str__(self):
         return self.title
@@ -38,66 +33,50 @@ class Event(models.Model):
     def save(self, *args, **kwargs):
         if not self.slug:
             self.slug = slugify(self.title)
-            while Event.objects.filter(slug=self.slug).exists():
-                self.slug = f'{slugify(self.title)}-{get_random_string(4)}'
+            unique_slug = self.slug
+            while Event.objects.filter(slug=unique_slug).exists():
+                unique_slug = f"{self.slug}-{uuid.uuid4().hex[:6]}"
+            self.slug = unique_slug
+        if self.end_time <= self.start_time:
+            raise ValidationError("End time must be after start time.")
         if self.registration_deadline >= self.start_time:
-            raise ValidationError("Registration deadline must be before the event start time.")
+            raise ValidationError("Registration deadline must be before start time.")
         super().save(*args, **kwargs)
 
-    @property
-    def final_price(self):
-        discount_percentage_decimal = Decimal(str(self.discount_percentage))
-        discount_factor = Decimal('1') - (discount_percentage_decimal / Decimal('100'))
-        return self.price * discount_factor
-
-    def attend(self, user):
-        participant, created = Participant.objects.get_or_create(session=self, user=user)
-        return participant
-
-class Speaker(models.Model):
-    event = models.ForeignKey(Event, related_name='speakers', on_delete=models.CASCADE)
-    name = models.CharField(max_length=255)
-    avatar = models.ImageField(upload_to='speakers/', null=True, blank=True)
-
-    def __str__(self):
-        return self.name
-
-class Schedule(models.Model):
-    event = models.ForeignKey(Event, related_name='schedules', on_delete=models.CASCADE)
-    day = models.DateField()
-    title = models.CharField(max_length=255)
-    time = models.CharField(max_length=50)  # e.g., "9:00 AM - 10:00 AM"
-    speakers = models.ManyToManyField(Speaker, blank=True)
-
-    def __str__(self):
-        return f"{self.title} on {self.day}"
-
 class Participant(models.Model):
-    session = models.ForeignKey(Event, related_name='event', on_delete=models.CASCADE)
-    user = models.ForeignKey(User, related_name='participant', on_delete=models.CASCADE, blank=True, null=True)
+    event = models.ForeignKey(Event, on_delete=models.CASCADE, related_name='participants')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='event_participants')
     joined_at = models.DateTimeField(auto_now_add=True)
 
-    def __str__(self):
-        if self.user:
-            return f"{self.user.full_name} in {self.session}"
-        return f"Unknown in {self.session}"
-
-class Payment(models.Model):
-    PAYMENT_METHODS = [
-        ('mpesa', 'M-Pesa'),
-        ('vodacom', 'Vodacom'),
-        ('airtel', 'Airtel'),
-        ('mtn', 'MTN'),
-        ('card', 'Card'),
-    ]
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='event_payments')
-    event = models.ForeignKey('Event', on_delete=models.CASCADE, null=True, blank=True)
-    amount = models.DecimalField(max_digits=10, decimal_places=2)
-    order_tracking_id = models.CharField(max_length=255, unique=True, default=uuid.uuid4)
-    currency = models.CharField(max_length=3, default='KES')
-    payment_date = models.DateTimeField(auto_now_add=True)
-    is_successful = models.BooleanField(default=False)
-    payment_method = models.CharField(max_length=20, choices=PAYMENT_METHODS, default='mpesa')
+    class Meta:
+        unique_together = ('event', 'user')
 
     def __str__(self):
-        return f"{self.user.username} - {self.event.title if self.event else 'Unknown'} - {self.amount}"
+        return f"{self.user} - {self.event.title}"
+
+class Speaker(models.Model):
+    event = models.ForeignKey(Event, on_delete=models.CASCADE, related_name='speakers')
+    name = models.CharField(max_length=255)
+    bio = models.TextField(blank=True)
+
+    def __str__(self):
+        return f"{self.name} - {self.event.title}"
+
+class Schedule(models.Model):
+    event = models.ForeignKey(Event, on_delete=models.CASCADE, related_name='schedules')
+    title = models.CharField(max_length=255)
+    start_time = models.DateTimeField()
+    end_time = models.DateTimeField()
+
+    def __str__(self):
+        return f"{self.title} - {self.event.title}"
+
+    def clean(self):
+        if self.end_time <= self.start_time:
+            raise ValidationError("End time must be after start time.")
+        if self.start_time < self.event.start_time or self.end_time > self.event.end_time:
+            raise ValidationError("Schedule must be within event's time frame.")
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)

@@ -1,5 +1,7 @@
 from rest_framework import serializers
-from .models import Event, Participant, Payment, Speaker, Schedule
+from .models import Event, Participant, Speaker, Schedule
+from payments.serializers import PaymentSerializer
+from payments.models import Payment
 from django.contrib.auth import get_user_model
 
 User = get_user_model()
@@ -12,7 +14,7 @@ class UserSerializer(serializers.ModelSerializer):
 class SpeakerSerializer(serializers.ModelSerializer):
     class Meta:
         model = Speaker
-        fields = ['name', 'followers', 'avatar']
+        fields = ['name', 'avatar']
 
 class ScheduleSerializer(serializers.ModelSerializer):
     speakers = SpeakerSerializer(many=True)
@@ -34,19 +36,6 @@ class ParticipantSerializer(serializers.ModelSerializer):
         validated_data['user'] = self.context['request'].user
         return super().create(validated_data)
 
-class PaymentSerializer(serializers.ModelSerializer):
-    user = UserSerializer(read_only=True)
-    event = serializers.PrimaryKeyRelatedField(queryset=Event.objects.all(), write_only=True)
-
-    class Meta:
-        model = Payment
-        fields = ['id', 'user', 'event', 'amount', 'payment_date', 'is_successful']
-        read_only_fields = ['payment_date', 'is_successful']
-
-    def create(self, validated_data):
-        validated_data['user'] = self.context['request'].user
-        return super().create(validated_data)
-
 class EventSerializer(serializers.ModelSerializer):
     created_by = UserSerializer(read_only=True)
     participants = ParticipantSerializer(many=True, read_only=True, source='event')
@@ -56,6 +45,7 @@ class EventSerializer(serializers.ModelSerializer):
     visitors = serializers.SerializerMethodField()
     registered = serializers.SerializerMethodField()
     attendance = serializers.SerializerMethodField()
+    stream_url = serializers.SerializerMethodField()
 
     class Meta:
         model = Event
@@ -63,16 +53,34 @@ class EventSerializer(serializers.ModelSerializer):
             'id', 'title', 'description', 'event_type', 'start_time', 'end_time', 'location', 'cover',
             'discount_percentage', 'price', 'final_price', 'registration_deadline', 'discount_deadline',
             'slug', 'created_by', 'participants', 'payments', 'speakers', 'schedules', 'visitors',
-            'registered', 'attendance'
+            'registered', 'attendance', 'stream_url'
         ]
         read_only_fields = ['slug', 'final_price', 'participants', 'payments', 'speakers', 'schedules',
-                           'visitors', 'registered', 'attendance']
+                           'visitors', 'registered', 'attendance', 'stream_url']
 
     def get_visitors(self, obj):
-        return 125  # Mocked, implement view tracking
+        return 125
 
     def get_registered(self, obj):
-        return obj.event.count()  # Count participants
+        return obj.event.count()
 
     def get_attendance(self, obj):
-        return 350  # Mocked, implement attendance tracking
+        return 350
+
+    def get_stream_url(self, obj):
+        request = self.context.get('request')
+        if not request or not request.user.is_authenticated:
+            return None
+        is_participant = Participant.objects.filter(session=obj, user=request.user).exists()
+        if not is_participant:
+            return None
+        if obj.final_price > 0:
+            has_paid = Payment.objects.filter(
+                user=request.user,
+                content_type__model='event',
+                object_id=obj.id,
+                status='succeeded'
+            ).exists()
+            if not has_paid:
+                return None
+        return obj.stream_url

@@ -1,18 +1,24 @@
-# course_app/views.py
-from rest_framework import viewsets, permissions,generics,status
-from rest_framework.decorators import action
+from rest_framework import viewsets, permissions, status
+from rest_framework.decorators import action  # Corrected import
 from rest_framework.response import Response
 from rest_framework.exceptions import ValidationError
 from django.db.models import Prefetch
-from .models import Course, Module, Video, Document, Quiz, Question, Answer, Enrollment, VideoProgress, DocumentProgress, QuizAttempt, ModuleProgress, FAQ, Tags, Payment
+from django.contrib.contenttypes.models import ContentType
+import requests
+from tenacity import retry, stop_after_attempt, wait_fixed
+from django.conf import settings
+import uuid
+import logging
+
+from .models import Course, Module, Video, Document, Quiz, Question, Answer, Enrollment, VideoProgress, DocumentProgress, QuizAttempt, ModuleProgress, FAQ, Tags
 from .serializers import (
     CourseSerializer, ModuleSerializer, VideoSerializer, DocumentSerializer,
     QuizSerializer, QuestionSerializer, AnswerSerializer, EnrollmentSerializer,
     VideoProgressSerializer, DocumentProgressSerializer, QuizAttemptSerializer,
     ModuleProgressSerializer, FAQSerializer, TagsSerializer
 )
-import uuid
-import re
+
+logger = logging.getLogger(__name__)
 
 class CourseViewSet(viewsets.ModelViewSet):
     queryset = Course.objects.all()
@@ -22,99 +28,86 @@ class CourseViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(instructor=self.request.user)
 
+    @retry(stop=stop_after_attempt(3), wait=wait_fixed(1))
+    def process_payment(self, content_type_id, object_id, amount, payment_method, phone_number, card_number, auth_token):
+        try:
+            response = requests.post(
+                f"{settings.PAYMENT_API_BASE_URL}checkout/",
+                json={
+                    'content_type_id': content_type_id,
+                    'object_id': object_id,
+                    'amount': float(amount),
+                    'payment_method': payment_method,
+                    'phone_number': phone_number,
+                    'card_number': card_number,
+                    'idempotency_key': str(uuid.uuid4())
+                },
+                headers={'Authorization': f'Bearer {auth_token}'}
+            )
+            response.raise_for_status()
+            return response.json()
+        except requests.RequestException as e:
+            logger.error(f"Payment request error: {str(e)}")
+            raise
+
     @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated])
     def enroll(self, request, slug=None):
-        """Enroll the authenticated user in the course with manual payment confirmation."""
         course = self.get_object()
         user = request.user
 
-        # Check if already enrolled
         if Enrollment.objects.filter(user=user, course=course).exists():
-            return Response({'detail': 'Already enrolled'}, status=400)
+            return Response({'detail': 'Already enrolled'}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Free course
         if course.final_price <= 0:
             enrollment = Enrollment.objects.create(user=user, course=course)
             serializer = EnrollmentSerializer(enrollment)
-            return Response(serializer.data, status=201)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
 
-        # Handle payment confirmation
-        order_tracking_id = request.data.get('order_tracking_id')
-        if order_tracking_id:
-            try:
-                payment = Payment.objects.get(order_tracking_id=order_tracking_id, user=user, course=course)
-                if payment.status == 'succeeded':
-                    return Response({'detail': 'Payment already processed'}, status=400)
-                # Simulate payment confirmation
-                payment.status = 'succeeded'
-                payment.save()
-                # Create enrollment
-                enrollment = Enrollment.objects.create(user=user, course=course)
-                payment.enrollment = enrollment
-                payment.save()
-                serializer = EnrollmentSerializer(enrollment)
-                return Response(serializer.data, status=201)
-            except Payment.DoesNotExist:
-                return Response({'detail': 'Invalid or unauthorized payment'}, status=400)
-            except Exception as e:
-                return Response({'detail': f'Error confirming payment: {str(e)}'}, status=500)
+        payment_method = request.data.get('payment_method', 'mpesa')
+        phone_number = request.data.get('phone_number')
+        card_number = request.data.get('card_number')
 
-        # Initiate payment
         try:
-            phone_number = request.data.get('phone_number')
-            card_number = request.data.get('card_number')
-            payment_method = request.data.get('payment_method', 'mpesa')
-            if payment_method not in ['mpesa', 'vodacom', 'airtel', 'mtn', 'card']:
-                raise ValidationError("Invalid payment method")
-            if payment_method == 'card' and not card_number:
-                raise ValidationError("Card number is required for card payments")
-            if payment_method != 'card' and not phone_number:
-                raise ValidationError("Phone number is required for mobile payments")
-            if phone_number and not re.match(r'^\+254\d{9}$', phone_number):
-                raise ValidationError("Invalid phone number format. Use +254 followed by 9 digits.")
-            if card_number and not re.match(r'^\d{16}$', card_number):
-                raise ValidationError("Invalid card number format. Use 16 digits.")
-            order_tracking_id = str(uuid.uuid4())
-            # Create pending payment
-            Payment.objects.create(
-                user=user,
-                course=course,
-                order_tracking_id=order_tracking_id,
+            content_type = ContentType.objects.get_for_model(Course)
+            payment_response = self.process_payment(
+                content_type_id=content_type.id,
+                object_id=course.id,
                 amount=course.final_price,
-                currency='KES',
-                status='pending',
-                payment_method=payment_method
+                payment_method=payment_method,
+                phone_number=phone_number,
+                card_number=card_number,
+                auth_token=request.auth
             )
-            return Response({
-                'order_tracking_id': order_tracking_id,
-                'enrollment_pending': True,
-                'instructions': f'Please confirm the {payment_method} payment to complete enrollment.'
-            }, status=200)
-        except ValidationError as e:
-            return Response({'detail': str(e)}, status=400)
+
+            if payment_response['status'] == 'succeeded':
+                enrollment = Enrollment.objects.create(user=user, course=course)
+                serializer = EnrollmentSerializer(enrollment)
+                return Response(serializer.data, status=status.HTTP_201_CREATED)
+            else:
+                return Response({'detail': payment_response.get('detail', 'Payment failed')}, status=status.HTTP_400_BAD_REQUEST)
+        except requests.RequestException as e:
+            return Response({'detail': f'Payment service error: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except Exception as e:
-            return Response({'detail': f'An error occurred: {str(e)}'}, status=500)
+            logger.error(f"Enroll error: {str(e)}")
+            return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=False, methods=['get'], permission_classes=[permissions.IsAuthenticated])
     def enrolled(self, request):
-        """Return a list of enrollments for the authenticated user."""
         enrollments = Enrollment.objects.filter(user=request.user)
         serializer = EnrollmentSerializer(enrollments, many=True)
         return Response(serializer.data)
 
     @action(detail=True, methods=['get'], permission_classes=[permissions.IsAuthenticated])
     def my_progress(self, request, slug=None):
-        """Return the authenticated user's progress in the course."""
         course = self.get_object()
         enrollment = Enrollment.objects.filter(course=course, user=request.user).first()
         if not enrollment:
-            return Response({'detail': 'Not enrolled'}, status=404)
+            return Response({'detail': 'Not enrolled'}, status=status.HTTP_404_NOT_FOUND)
         serializer = EnrollmentSerializer(enrollment)
         return Response(serializer.data)
 
     @action(detail=False, methods=['get'], permission_classes=[permissions.IsAuthenticated])
     def user_progress(self, request):
-        """Return enrolled courses, completed courses, documents read, and quizzes done for the user."""
         user = request.user
         enrollments = Enrollment.objects.filter(user=user).select_related('course').prefetch_related(
             Prefetch('course__modules', queryset=Module.objects.all())
@@ -147,19 +140,18 @@ class CourseViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'], permission_classes=[permissions.IsAuthenticated])
     def drafts(self, request):
-        """Return a list of unpublished (draft) courses for the authenticated user."""
         drafts = Course.objects.filter(instructor=request.user, ispublished=False)
         serializer = CourseSerializer(drafts, many=True)
         return Response(serializer.data)
 
     def get_permissions(self):
         if self.action in ['create', 'update', 'partial_update', 'destroy']:
-            self.permission_classes = [permissions.IsAdminUser]
-        elif self.action in ['enroll', 'enrolled', 'my_progress', 'user_progress']:
-            self.permission_classes = [permissions.IsAuthenticated]
+            permission_classes = [permissions.IsAdminUser]
+        elif self.action in ['enroll', 'enrolled', 'my_progress', 'user_progress', 'drafts']:
+            permission_classes = [permissions.IsAuthenticated]
         else:
-            self.permission_classes = [permissions.IsAuthenticatedOrReadOnly]
-        return super().get_permissions()
+            permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+        return [perm() for perm in permission_classes]
 
 class ModuleViewSet(viewsets.ModelViewSet):
     queryset = Module.objects.all()
@@ -167,14 +159,12 @@ class ModuleViewSet(viewsets.ModelViewSet):
 
     def get_serializer_context(self):
         context = super().get_serializer_context()
-        # Pass course_id from request data or URL
         course_id = self.request.data.get('course') or self.request.query_params.get('course')
         if course_id:
             context['course_id'] = course_id
         return context
 
     def create(self, request, *args, **kwargs):
-        # Handle single module creation
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
@@ -182,7 +172,6 @@ class ModuleViewSet(viewsets.ModelViewSet):
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
     def update(self, request, *args, **kwargs):
-        # Handle single module update
         partial = kwargs.pop('partial', False)
         instance = self.get_object()
         serializer = self.get_serializer(instance, data=request.data, partial=partial)
@@ -198,7 +187,6 @@ class ModuleViewSet(viewsets.ModelViewSet):
 
         for module_data in modules_data:
             if module_data.get('id'):
-                # Skip modules with IDs (handled by update)
                 continue
 
             serializer = self.get_serializer(data=module_data, context={'course_id': course_id})
@@ -236,12 +224,12 @@ class VideoViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action in ['create', 'update', 'partial_update', 'destroy']:
-            self.permission_classes = [permissions.IsAdminUser]
+            permission_classes = [permissions.IsAdminUser]
         elif self.action == 'update_progress':
-            self.permission_classes = [permissions.IsAuthenticated]
+            permission_classes = [permissions.IsAuthenticated]
         else:
-            self.permission_classes = [permissions.IsAuthenticatedOrReadOnly]
-        return super().get_permissions()
+            permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+        return [perm() for perm in permission_classes]
 
 class DocumentViewSet(viewsets.ModelViewSet):
     queryset = Document.objects.all()
@@ -271,12 +259,12 @@ class DocumentViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action in ['create', 'update', 'partial_update', 'destroy']:
-            self.permission_classes = [permissions.IsAdminUser]
+            permission_classes = [permissions.IsAdminUser]
         elif self.action == 'update_progress':
-            self.permission_classes = [permissions.IsAuthenticated]
+            permission_classes = [permissions.IsAuthenticated]
         else:
-            self.permission_classes = [permissions.IsAuthenticatedOrReadOnly]
-        return super().get_permissions()
+            permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+        return [perm() for perm in permission_classes]
 
 class QuizViewSet(viewsets.ModelViewSet):
     queryset = Quiz.objects.all()
@@ -305,12 +293,12 @@ class QuizViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action in ['create', 'update', 'partial_update', 'destroy']:
-            self.permission_classes = [permissions.IsAdminUser]
+            permission_classes = [permissions.IsAdminUser]
         elif self.action == 'attempt':
-            self.permission_classes = [permissions.IsAuthenticated]
+            permission_classes = [permissions.IsAuthenticated]
         else:
-            self.permission_classes = [permissions.IsAuthenticatedOrReadOnly]
-        return super().get_permissions()
+            permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+        return [perm() for perm in permission_classes]
 
 class QuestionViewSet(viewsets.ModelViewSet):
     queryset = Question.objects.all()
@@ -328,10 +316,10 @@ class QuestionViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action in ['create', 'update', 'partial_update', 'destroy']:
-            self.permission_classes = [permissions.IsAdminUser]
+            permission_classes = [permissions.IsAdminUser]
         else:
-            self.permission_classes = [permissions.IsAuthenticatedOrReadOnly]
-        return super().get_permissions()
+            permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+        return [perm() for perm in permission_classes]
 
 class AnswerViewSet(viewsets.ModelViewSet):
     queryset = Answer.objects.all()
@@ -349,10 +337,10 @@ class AnswerViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action in ['create', 'update', 'partial_update', 'destroy']:
-            self.permission_classes = [permissions.IsAdminUser]
+            permission_classes = [permissions.IsAdminUser]
         else:
-            self.permission_classes = [permissions.IsAuthenticatedOrReadOnly]
-        return super().get_permissions()
+            permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+        return [perm() for perm in permission_classes]
 
 class FAQViewSet(viewsets.ModelViewSet):
     queryset = FAQ.objects.all()
@@ -373,10 +361,10 @@ class FAQViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action in ['create', 'update', 'partial_update', 'destroy']:
-            self.permission_classes = [permissions.IsAdminUser]
+            permission_classes = [permissions.IsAdminUser]
         else:
-            self.permission_classes = [permissions.IsAuthenticatedOrReadOnly]
-        return super().get_permissions()
+            permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+        return [perm() for perm in permission_classes]
 
 class TagsViewSet(viewsets.ModelViewSet):
     queryset = Tags.objects.all()
@@ -387,10 +375,10 @@ class TagsViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action in ['create', 'update', 'partial_update', 'destroy']:
-            self.permission_classes = [permissions.IsAdminUser]
+            permission_classes = [permissions.IsAdminUser]
         else:
-            self.permission_classes = [permissions.IsAuthenticatedOrReadOnly]
-        return super().get_permissions()
+            permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+        return [perm() for perm in permission_classes]
 
 class ModuleProgressViewSet(viewsets.ModelViewSet):
     queryset = ModuleProgress.objects.all()

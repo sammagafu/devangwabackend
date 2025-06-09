@@ -15,5 +15,5 @@ router.register(r'tags', views.TagsViewSet, basename='tag')
 router.register(r'module-progress', views.ModuleProgressViewSet, basename='module-progress')
 
 urlpatterns = [
-    path('course/', include(router.urls)),
+    path('', include(router.urls)),
 ]

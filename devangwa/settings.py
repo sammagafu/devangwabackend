@@ -45,7 +45,7 @@ INSTALLED_APPS = [
     'course',
     'coaching',
     'community',
-    'payment',
+    'payments',
 ]
 
 MIDDLEWARE = [
@@ -193,3 +193,6 @@ CSRF_TRUSTED_ORIGINS = [
     'http://127.0.0.1:5173',
     'http://devangwacoaching.com',
 ]
+PAYMENTS_API_BASE_URL = 'http://localhost:8000'  # For local developmentPAYMENT_API_BASE_URL = "http://payment-service:8000/api/payments/"
+DEFAULT_CURRENCY = "TZS"
+DEFAULT_FROM_EMAIL = "noreply@yourdomain.com"
