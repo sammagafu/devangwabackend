@@ -27,10 +27,11 @@ from .views import index
 
 urlpatterns = [
     path('api/v1/admin/', admin.site.urls),
-    path('api/v1/courses/', include('course.urls')),
+    path('api/v1/course/', include('course.urls')),
     path('api/v1/coaching/', include('coaching.urls')),
     path('api/v1/community/', include('community.urls')),
     path('api/v1/payments/', include('payments.urls')),
+    path('api/v1/dashboard/', include('dashboard.urls')),
     path('api/v1/auth/', include('accounts.urls')),
     re_path(r'^api/v1/auth/', include('djoser.urls')),
     path('api/v1/auth/jwt/create/', TokenObtainPairView.as_view(), name='token_obtain_pair'),

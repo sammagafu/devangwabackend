@@ -13,6 +13,7 @@ router.register(r'answers', views.AnswerViewSet, basename='answer')
 router.register(r'faqs', views.FAQViewSet, basename='faq')
 router.register(r'tags', views.TagsViewSet, basename='tag')
 router.register(r'module-progress', views.ModuleProgressViewSet, basename='module-progress')
+router.register(r'reviews', views.CourseReviewViewSet, basename='review')
 
 urlpatterns = [
     path('', include(router.urls)),

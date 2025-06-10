@@ -69,7 +69,7 @@ class Membership(models.Model):
         ('premium', 'Premium'),
     )
 
-    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='user_membership')
     membership_type = models.CharField(max_length=20, choices=MEMBERSHIP_TYPES)
     expiration_date = models.DateField()
     is_active = models.BooleanField(default=True)  # Default membership status is active

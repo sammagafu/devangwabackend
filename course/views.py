@@ -10,12 +10,12 @@ from django.conf import settings
 import uuid
 import logging
 
-from .models import Course, Module, Video, Document, Quiz, Question, Answer, Enrollment, VideoProgress, DocumentProgress, QuizAttempt, ModuleProgress, FAQ, Tags
+from .models import Course, Module, Video, Document, Quiz, Question, Answer, Enrollment, VideoProgress, DocumentProgress, QuizAttempt, ModuleProgress, FAQ, Tags,CourseReview
 from .serializers import (
     CourseSerializer, ModuleSerializer, VideoSerializer, DocumentSerializer,
     QuizSerializer, QuestionSerializer, AnswerSerializer, EnrollmentSerializer,
     VideoProgressSerializer, DocumentProgressSerializer, QuizAttemptSerializer,
-    ModuleProgressSerializer, FAQSerializer, TagsSerializer
+    ModuleProgressSerializer, FAQSerializer, TagsSerializer,CourseReviewSerializer
 )
 
 logger = logging.getLogger(__name__)
@@ -396,3 +396,31 @@ class ModuleProgressViewSet(viewsets.ModelViewSet):
             serializer.save(enrollment=enrollment, module=module)
         except (Enrollment.DoesNotExist, Module.DoesNotExist):
             raise ValidationError("Invalid enrollment or module")
+        
+
+class CourseReviewViewSet(viewsets.ModelViewSet):
+    queryset = CourseReview.objects.all()
+    serializer_class = CourseReviewSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def perform_create(self, serializer):
+        course_id = self.request.data.get('course')
+        if not course_id:
+            raise ValidationError("Course ID is required")
+        try:
+            course = Course.objects.get(id=course_id)
+            serializer.save(user=self.request.user, course=course)
+        except Course.DoesNotExist:
+            raise ValidationError("Course does not exist")
+
+    def get_permissions(self):
+        if self.action in ['create', 'update', 'partial_update', 'destroy']:
+            permission_classes = [permissions.IsAuthenticated]
+        else:
+            permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+        return [perm() for perm in permission_classes]
+    def perform_update(self, serializer):
+        if 'rating' in serializer.validated_data:
+            serializer.save(user=self.request.user)
+        else:
+            raise ValidationError("Rating is required for updating a review")

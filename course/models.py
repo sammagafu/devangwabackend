@@ -187,3 +187,17 @@ class Tags(models.Model):
 
     def __str__(self):
         return self.name
+    
+class CourseReview(models.Model):
+    course = models.ForeignKey(Course, on_delete=models.CASCADE, related_name='reviews')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='course_reviews')
+    visible = models.BooleanField(default=False)
+    rating = models.PositiveIntegerField(default=0)
+    comment = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('course', 'user')
+
+    def __str__(self):
+        return f"{self.user} - {self.course.title} - Rating: {self.rating}"

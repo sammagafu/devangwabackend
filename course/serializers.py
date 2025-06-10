@@ -1,6 +1,6 @@
 # course/serializers.py
 from rest_framework import serializers
-from .models import Course, Module, Video, Document, Quiz, Question, Answer, Enrollment, VideoProgress, DocumentProgress, QuizAttempt, ModuleProgress, FAQ, Tags
+from .models import Course, Module, Video, Document, Quiz, Question, Answer, Enrollment, VideoProgress, DocumentProgress, QuizAttempt, ModuleProgress, FAQ, Tags,CourseReview
 from django.contrib.auth import get_user_model
 from django.utils.text import slugify
 User = get_user_model()
@@ -118,6 +118,7 @@ class CourseSerializer(serializers.ModelSerializer):
     modules = ModuleSerializer(many=True, read_only=True)
     faqs = FAQSerializer(many=True, required=False)
     tags = TagsSerializer(many=True, required=False)
+    reviews = serializers.SerializerMethodField()
 
     class Meta:
         model = Course
@@ -129,7 +130,7 @@ class CourseSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             'id', 'slug', 'instructor', 'created_at', 'updated_at', 'final_price',
-            'total_modules', 'total_videos', 'total_documents', 'total_quizzes', 'modules'
+            'total_modules', 'total_videos', 'total_documents', 'total_quizzes', 'modules','reviews'
         ]
 
     def create(self, validated_data):
@@ -231,3 +232,17 @@ class ModuleProgressSerializer(serializers.ModelSerializer):
         model = ModuleProgress
         fields = ['id', 'enrollment', 'module', 'is_completed']
         read_only_fields = ['id']
+
+
+class CourseReviewSerializer(serializers.ModelSerializer):
+    user = UserSerializer(read_only=True)
+
+    class Meta:
+        model = CourseReview
+        fields = ['id', 'user', 'course', 'rating', 'comment', 'created_at']
+        read_only_fields = ['id', 'user', 'created_at']
+
+    def create(self, validated_data):
+        request = self.context.get('request')
+        validated_data['user'] = request.user if request else None
+        return super().create(validated_data)

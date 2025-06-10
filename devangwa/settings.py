@@ -46,6 +46,8 @@ INSTALLED_APPS = [
     'coaching',
     'community',
     'payments',
+    'dashboard',
+    
 ]
 
 MIDDLEWARE = [
