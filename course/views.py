@@ -1,21 +1,20 @@
 from rest_framework import viewsets, permissions, status
-from rest_framework.decorators import action  # Corrected import
+from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.exceptions import ValidationError
 from django.db.models import Prefetch
 from django.contrib.contenttypes.models import ContentType
 import requests
-from tenacity import retry, stop_after_attempt, wait_fixed
-from django.conf import settings
 import uuid
 import logging
+import time
 
-from .models import Course, Module, Video, Document, Quiz, Question, Answer, Enrollment, VideoProgress, DocumentProgress, QuizAttempt, ModuleProgress, FAQ, Tags,CourseReview
+from .models import Course, Module, Video, Document, Quiz, Question, Answer, Enrollment, VideoProgress, DocumentProgress, QuizAttempt, ModuleProgress, FAQ, Tags, CourseReview
 from .serializers import (
     CourseSerializer, ModuleSerializer, VideoSerializer, DocumentSerializer,
     QuizSerializer, QuestionSerializer, AnswerSerializer, EnrollmentSerializer,
     VideoProgressSerializer, DocumentProgressSerializer, QuizAttemptSerializer,
-    ModuleProgressSerializer, FAQSerializer, TagsSerializer,CourseReviewSerializer
+    ModuleProgressSerializer, FAQSerializer, TagsSerializer, CourseReviewSerializer
 )
 
 logger = logging.getLogger(__name__)
@@ -28,27 +27,32 @@ class CourseViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(instructor=self.request.user)
 
-    @retry(stop=stop_after_attempt(3), wait=wait_fixed(1))
     def process_payment(self, content_type_id, object_id, amount, payment_method, phone_number, card_number, auth_token):
-        try:
-            response = requests.post(
-                f"{settings.PAYMENT_API_BASE_URL}checkout/",
-                json={
-                    'content_type_id': content_type_id,
-                    'object_id': object_id,
-                    'amount': float(amount),
-                    'payment_method': payment_method,
-                    'phone_number': phone_number,
-                    'card_number': card_number,
-                    'idempotency_key': str(uuid.uuid4())
-                },
-                headers={'Authorization': f'Bearer {auth_token}'}
-            )
-            response.raise_for_status()
-            return response.json()
-        except requests.RequestException as e:
-            logger.error(f"Payment request error: {str(e)}")
-            raise
+        max_attempts = 3
+        attempt = 1
+        while attempt <= max_attempts:
+            try:
+                response = requests.post(
+                    f"{settings.PAYMENT_API_BASE_URL}/checkout/",
+                    json={
+                        'content_type_id': content_type_id,
+                        'object_id': object_id,
+                        'amount': float(amount),
+                        'payment_method': payment_method,
+                        'phone_number': phone_number,
+                        'card_number': card_number,
+                        'idempotency_key': str(uuid.uuid4())
+                    },
+                    headers={'Authorization': f'Bearer {auth_token}'}
+                )
+                response.raise_for_status()
+                return response.json()
+            except requests.RequestException as e:
+                logger.error(f"Payment attempt {attempt}/{max_attempts} failed: {str(e)}")
+                if attempt == max_attempts:
+                    raise
+                attempt += 1
+                time.sleep(1)  # Wait 1 second before retrying
 
     @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated])
     def enroll(self, request, slug=None):
@@ -396,7 +400,6 @@ class ModuleProgressViewSet(viewsets.ModelViewSet):
             serializer.save(enrollment=enrollment, module=module)
         except (Enrollment.DoesNotExist, Module.DoesNotExist):
             raise ValidationError("Invalid enrollment or module")
-        
 
 class CourseReviewViewSet(viewsets.ModelViewSet):
     queryset = CourseReview.objects.all()
@@ -419,6 +422,7 @@ class CourseReviewViewSet(viewsets.ModelViewSet):
         else:
             permission_classes = [permissions.IsAuthenticatedOrReadOnly]
         return [perm() for perm in permission_classes]
+
     def perform_update(self, serializer):
         if 'rating' in serializer.validated_data:
             serializer.save(user=self.request.user)
