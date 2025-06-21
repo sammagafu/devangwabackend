@@ -2,13 +2,13 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from django.db.models import Count, Sum
 from django.utils import timezone
+from django.db.models.functions import TruncMonth
+from datetime import datetime
 from accounts.models import CustomUser, Membership
 from course.models import Course, Enrollment
 from coaching.models import Event, Participant
 from payments.models import Payment
 from community.models import Category, Thread, ThreadReply
-from dateutil.relativedelta import relativedelta
-from django.db.models.functions import TruncMonth
 
 class DashboardStatsView(APIView):
     def get(self, request):
@@ -77,7 +77,10 @@ class EarningsChartView(APIView):
     def get(self, request):
         try:
             end_date = timezone.now().date()
-            start_date = end_date - relativedelta(months=11)
+            # Calculate start date as 11 months ago
+            start_year = end_date.year - 1 if end_date.month < 12 else end_date.year
+            start_month = end_date.month + 1 if end_date.month < 12 else 1
+            start_date = datetime(start_year, start_month, 1).date()
             earnings = Payment.objects.filter(
                 status='succeeded',
                 created_at__date__gte=start_date,
@@ -113,7 +116,7 @@ class TopInstructorsView(APIView):
                 {
                     'id': instructor.id,
                     'name': instructor.full_name or instructor.email,
-                    'image': instructor.userdetails.avatar.url if hasattr(instructor, 'userdetails') and instructor.userdetails.avatar else null,
+                    'image': instructor.userdetails.avatar.url if hasattr(instructor, 'userdetails') and instructor.userdetails.avatar else None,
                     'verified': instructor.is_staff,
                     'courses': instructor.course_count,
                     'rating': 4.5  # Mock rating; replace with actual if available
