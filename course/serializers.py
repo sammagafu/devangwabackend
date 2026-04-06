@@ -123,7 +123,7 @@ class CourseSerializer(serializers.ModelSerializer):
     class Meta:
         model = Course
         fields = [
-            'id', 'title', 'slug', 'description', 'instructor', 'price', 'ispublished', 'cover',
+            'id', 'title', 'slug', 'description', 'instructor', 'final_price', 'ispublished', 'cover',
             'created_at', 'updated_at', 'discount_percentage', 'discount_deadline', 'total_modules',
             'total_videos', 'total_documents', 'total_quizzes', 'tags', 'is_featured', 'modules',
             'faqs', 'final_price'
@@ -152,7 +152,7 @@ class CourseSerializer(serializers.ModelSerializer):
         # Update scalar fields
         instance.title = validated_data.get('title', instance.title)
         instance.description = validated_data.get('description', instance.description)
-        instance.price = validated_data.get('price', instance.price)
+        instance.final_price = validated_data.get('final_price', instance.final_price)
         instance.ispublished = validated_data.get('ispublished', instance.ispublished)
         instance.discount_percentage = validated_data.get('discount_percentage', instance.discount_percentage)
         instance.discount_deadline = validated_data.get('discount_deadline', instance.discount_deadline)

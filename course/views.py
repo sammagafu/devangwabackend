@@ -24,6 +24,11 @@ class CourseViewSet(viewsets.ModelViewSet):
     serializer_class = CourseSerializer
     lookup_field = "slug"
 
+    def get_permissions(self):
+        if self.action in ['create', 'update', 'partial_update', 'destroy']:
+            return [permissions.IsAuthenticated()]
+        return [permissions.AllowAny()]
+
     def perform_create(self, serializer):
         serializer.save(instructor=self.request.user)
 
