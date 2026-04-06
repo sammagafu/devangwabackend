@@ -1,0 +1,70 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install backend dependencies
+      run: |
+        cd devangwabackend
+        pip install -r requirements.txt
+
+    - name: Run Django migrations
+      run: |
+        cd devangwabackend
+        python manage.py migrate
+
+    - name: Run Django tests
+      run: |
+        cd devangwabackend
+        python manage.py test
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+
+    - name: Install frontend dependencies
+      run: |
+        cd devangwacoaching
+        npm install
+
+    - name: Build frontend
+      run: |
+        cd devangwacoaching
+        npm run build
+
+    - name: Lint frontend
+      run: |
+        cd devangwacoaching
+        npm run lint
+
+  build-and-deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Build Docker image
+      run: docker build -t devangwa-app .
+
+    - name: Deploy to server
+      run: |
+        # Add deployment commands here
+        echo "Deploy to production server"

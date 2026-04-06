@@ -1,0 +1,10 @@
+devangwacoaching/node_modules
+devangwacoaching/dist
+devangwabackend/__pycache__
+devangwabackend/**/*.pyc
+devangwabackend/db.sqlite3
+devangwabackend/media
+devangwabackend/staticfiles
+.git
+.gitignore
+README.md
