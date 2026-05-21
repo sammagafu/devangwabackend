@@ -48,7 +48,7 @@ sequenceDiagram
     F->>F: Store Tokens (localStorage/sessionStorage)
 
     Note over F: Subsequent API Calls
-    F->>B: GET /api/v1/courses/ + Authorization: Bearer {access}
+    F->>B: GET /api/v1/course/courses/ + Authorization: Bearer {access}
     B-->>F: Protected Data
 ```
 
@@ -112,10 +112,13 @@ REST_FRAMEWORK = {
 }
 
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(days=1),
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),  # JWT_ACCESS_TOKEN_MINUTES
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),     # JWT_REFRESH_TOKEN_DAYS
+    'ROTATE_REFRESH_TOKENS': True,
 }
 ```
+
+Sentry initializes only when `SENTRY_DSN` is set.
 
 ### User Roles & Permissions
 
@@ -256,33 +259,78 @@ Response:
 }
 ```
 
+### Enrollment
+
+#### Enroll in a course
+```http
+POST /api/v1/course/courses/{slug}/enroll/
+Authorization: Bearer {access_token}
+Content-Type: application/json
+
+# Free course — empty body or omit payment fields
+{}
+
+# Paid course — triggers internal call to payments checkout
+{
+  "payment_method": "mpesa",
+  "phone_number": "+255712345678",
+  "card_number": null
+}
+
+Response (201):
+{
+  "id": 1,
+  "user": { "id": 1, "email": "...", "full_name": "..." },
+  "course": { "id": 1, "title": "...", "slug": "..." },
+  "enrolled_at": "2026-05-21T12:00:00Z",
+  "completion_percentage": 0,
+  "is_completed": false
+}
+```
+
+#### List enrolled courses
+```http
+GET /api/v1/course/courses/enrolled/
+Authorization: Bearer {access_token}
+```
+
+#### Course reviews
+```http
+GET /api/v1/course/reviews/?course={course_id}
+POST /api/v1/course/reviews/
+{ "course": 1, "rating": 5, "comment": "Great course" }
+```
+
 ### Payment Integration
 
-#### Process Payment
+Payments are exposed at `/api/v1/payments/checkout/`. Course and event enrollment call this internally using `PAYMENTS_API_BASE_URL` (default `http://127.0.0.1:8000/api/v1/payments`).
+
+> **Production:** Replace simulated payment logic in `payments/views.py` before accepting real money.
+
+#### Checkout
 ```http
-POST /api/v1/payments/process-payment/
+POST /api/v1/payments/checkout/
 Authorization: Bearer {access_token}
 Content-Type: application/json
 
 {
-  "content_type_id": 1,
+  "content_type_id": 12,
   "object_id": 1,
   "amount": 99.99,
-  "payment_method": "card",
-  "phone_number": "+1234567890",
-  "card_number": "4111111111111111"
+  "payment_method": "mpesa",
+  "phone_number": "+255712345678",
+  "idempotency_key": "optional-uuid"
 }
 
 Response:
 {
-  "order_tracking_id": "ORD-2024-001",
-  "status": "completed",
-  "details": {
-    "transaction_id": "TXN-12345",
-    "message": "Payment successful"
-  }
+  "order_tracking_id": "uuid",
+  "status": "succeeded",
+  "details": "Simulated mpesa payment successful."
 }
 ```
+
+Supported `payment_method` values: `mpesa`, `vodacom`, `airtel`, `mtn`, `card`.
 
 ## 🗄 Data Models
 

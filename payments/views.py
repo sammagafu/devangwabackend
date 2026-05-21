@@ -9,10 +9,13 @@ from django.core.mail import send_mail
 from django.conf import settings
 from django.utils import timezone
 from django.db.models import Sum, Q
+from django.contrib.contenttypes.models import ContentType
 import re
 import uuid
 import logging
 
+from course.models import Course
+from coaching.models import Event
 from .models import Payment, PaymentLog
 from .serializers import PaymentSerializer, EarningsSerializer
 
@@ -111,13 +114,14 @@ class PaymentViewSet(viewsets.ViewSet):
                     f"Method: {payment.get_payment_method_display()}\n\n"
                     f"Thank you!\nThe Team"
                 )
-                send_mail(
-                    subject=subject,
-                    message=message,
-                    from_email=settings.DEFAULT_FROM_EMAIL,
-                    recipient_list=[payment.user.email],
-                    fail_silently=False
-                )
+                if settings.EMAIL_HOST_USER:
+                    send_mail(
+                        subject=subject,
+                        message=message,
+                        from_email=settings.DEFAULT_FROM_EMAIL,
+                        recipient_list=[payment.user.email],
+                        fail_silently=True,
+                    )
 
             serializer = PaymentSerializer(payment)
             return Response({
@@ -130,8 +134,8 @@ class PaymentViewSet(viewsets.ViewSet):
         except ValidationError as e:
             return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
-            logger.error(f"Checkout error: {str(e)}")
-            return Response({'detail': f'Error processing payment: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Checkout error")
+            return Response({'detail': 'Error processing payment.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated])
     def earnings(self, request):
@@ -141,11 +145,17 @@ class PaymentViewSet(viewsets.ViewSet):
             if page < 1 or page_size < 1:
                 return Response({'detail': 'Invalid page or page size'}, status=status.HTTP_400_BAD_REQUEST)
 
-            # Filter payments for courses/events created by the instructor
+            course_ct = ContentType.objects.get_for_model(Course)
+            event_ct = ContentType.objects.get_for_model(Event)
+            owned_course_ids = Course.objects.filter(instructor=request.user).values_list('id', flat=True)
+            owned_event_ids = Event.objects.filter(created_by=request.user).values_list('id', flat=True)
+
             payments = Payment.objects.filter(
-                Q(course__instructor=request.user) | Q(event__created_by=request.user),
-                status='succeeded'
-            ).select_related('content_type').order_by('-created_at')
+                status='succeeded',
+            ).filter(
+                Q(content_type=course_ct, object_id__in=owned_course_ids)
+                | Q(content_type=event_ct, object_id__in=owned_event_ids)
+            ).select_related('content_type', 'user').order_by('-created_at')
 
             total_payments = payments.count()
             total_pages = (total_payments + page_size - 1) // page_size
@@ -169,5 +179,5 @@ class PaymentViewSet(viewsets.ViewSet):
             })
             return Response(serializer.data, status=status.HTTP_200_OK)
         except Exception as e:
-            logger.error(f"Earnings fetch error: {str(e)}")
-            return Response({'detail': f'Error fetching earnings: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Earnings fetch error")
+            return Response({'detail': 'Error fetching earnings.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

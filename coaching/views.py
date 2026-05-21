@@ -2,12 +2,15 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly, IsAdminUser
+from django.conf import settings
 from django.utils import timezone
 from django.contrib.contenttypes.models import ContentType
 import requests
 import uuid
 import logging
 import time
+
+from devangwa.request_utils import get_bearer_token
 
 from .models import Event, Participant, Speaker, Schedule
 from .serializers import EventSerializer, ParticipantSerializer, SpeakerSerializer, ScheduleSerializer
@@ -28,7 +31,7 @@ class EventViewSet(viewsets.ModelViewSet):
         while attempt <= max_attempts:
             try:
                 response = requests.post(
-                    f"{settings.PAYMENT_API_BASE_URL}/checkout/",
+                    f"{settings.PAYMENTS_API_BASE_URL}/checkout/",
                     json={
                         'content_type_id': content_type_id,
                         'object_id': object_id,
@@ -69,6 +72,10 @@ class EventViewSet(viewsets.ModelViewSet):
         phone_number = request.data.get('phone_number')
         card_number = request.data.get('card_number')
 
+        auth_token = get_bearer_token(request)
+        if not auth_token:
+            return Response({'detail': 'Authentication required for paid registration.'}, status=status.HTTP_401_UNAUTHORIZED)
+
         try:
             content_type = ContentType.objects.get_for_model(Event)
             payment_response = self.process_payment(
@@ -78,7 +85,7 @@ class EventViewSet(viewsets.ModelViewSet):
                 payment_method=payment_method,
                 phone_number=phone_number,
                 card_number=card_number,
-                auth_token=request.auth
+                auth_token=auth_token,
             )
 
             if payment_response['status'] == 'succeeded':
@@ -90,8 +97,8 @@ class EventViewSet(viewsets.ModelViewSet):
         except requests.RequestException as e:
             return Response({'detail': f'Payment service error: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except Exception as e:
-            logger.error(f"Attend registration error: {str(e)}")
-            return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+            logger.exception("Event registration error for %s", slug)
+            return Response({'detail': 'Registration failed. Please try again.'}, status=status.HTTP_400_BAD_REQUEST)
 
     def get_permissions(self):
         if self.action in ['list', 'retrieve']:
@@ -105,9 +112,21 @@ class EventViewSet(viewsets.ModelViewSet):
         return [perm() for perm in permission_classes]
 
 class ParticipantViewSet(viewsets.ModelViewSet):
-    queryset = Participant.objects.all()
+    queryset = Participant.objects.all().select_related('event', 'user')
     serializer_class = ParticipantSerializer
-    permission_classes = [IsAdminUser]
+
+    def get_permissions(self):
+        if self.action in ('list', 'retrieve') and self.request.user.is_authenticated:
+            permission_classes = [IsAuthenticated]
+        else:
+            permission_classes = [IsAdminUser]
+        return [perm() for perm in permission_classes]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        if self.action == 'list' and self.request.user.is_authenticated and not self.request.user.is_staff:
+            return qs.filter(user=self.request.user)
+        return qs
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)

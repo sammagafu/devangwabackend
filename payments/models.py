@@ -39,7 +39,7 @@ class Payment(models.Model):
     def clean(self):
         if self.amount <= 0:
             raise ValidationError("Amount must be positive.")
-        if self.currency not in ['KES', 'USD']:
+        if self.currency not in ['KES', 'USD', 'TZS']:
             raise ValidationError("Unsupported currency.")
         if not isinstance(self.order_tracking_id, str) or not re.match(r'^[0-9a-f-]{36}$', self.order_tracking_id):
             raise ValidationError("Invalid order tracking ID format.")

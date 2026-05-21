@@ -6,3 +6,9 @@ devangwabackend/media/
 devangwabackend/staticfiles/
 *.pyc
 __pycache__/
+.env
+.env.local
+*.log
+.venv/
+venv/
+.DS_Store

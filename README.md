@@ -16,9 +16,9 @@ A comprehensive e-learning platform built with Django REST Framework (backend) a
    cd devangwacoaching
    ```
 
-2. **Build and run with Docker:**
+2. **Build and run with Docker** (from monorepo root):
    ```bash
-   docker build -t devangwa-app .
+   docker build -f devangwabackend/Dockerfile -t devangwa-app .
    docker run -p 80:80 \
      -e DEBUG=True \
      -e ALLOWED_HOSTS=localhost,127.0.0.1 \
@@ -31,6 +31,7 @@ A comprehensive e-learning platform built with Django REST Framework (backend) a
 3. **Access the application:**
    - Frontend: http://localhost
    - API: http://localhost/api/v1/
+   - Health: http://localhost/health/
    - Admin: http://localhost/api/v1/admin/
 
 ## 📁 Project Structure
@@ -53,10 +54,13 @@ devangwa/
 │   │   ├── services/        # API service layer
 │   │   └── router/          # Vue Router configuration
 │   └── public/              # Static assets
-├── Dockerfile               # Production container configuration
-├── nginx.conf              # Nginx reverse proxy config
-├── backup.sh               # Database backup script
-└── HANDOVER.md            # Deployment documentation
+├── Dockerfile               # Build from repo root: -f devangwabackend/Dockerfile
+├── docker-entrypoint.sh     # migrate + collectstatic on container start
+├── nginx.conf               # Nginx reverse proxy config
+├── .env.example             # Environment variable template
+├── backup.sh                # Database backup script
+├── HANDOVER.md              # Deployment documentation
+└── INTEGRATION_GUIDE.md     # API integration for developers
 ```
 
 ## 🛠 Technology Stack
@@ -68,8 +72,8 @@ devangwa/
 - **Payments:** Custom payment integration
 - **Email:** SMTP with django-mailer
 - **Monitoring:** Sentry integration
-- **Rate Limiting:** django-ratelimit
-- **Caching:** Database-backed cache
+- **Rate Limiting:** DRF throttling + payment endpoint limits
+- **Caching:** LocMem (dev) or configurable via `CACHE_BACKEND`
 
 ### Frontend
 - **Framework:** Vue.js 3 + Composition API
@@ -91,29 +95,20 @@ devangwa/
 
 ### Environment Variables
 
-#### Backend
-```bash
-DEBUG=True
-SECRET_KEY=your-secret-key
-ALLOWED_HOSTS=localhost,127.0.0.1
-DATABASE_ENGINE=django.db.backends.postgresql
-DATABASE_NAME=devangwa_db
-DATABASE_USER=db_user
-DATABASE_PASSWORD=db_password
-DATABASE_HOST=localhost
-DATABASE_PORT=5432
-EMAIL_HOST=smtp.gmail.com
-EMAIL_PORT=587
-EMAIL_USE_TLS=True
-EMAIL_HOST_USER=your-email@gmail.com
-EMAIL_HOST_PASSWORD=your-app-password
-SENTRY_DSN=your-sentry-dsn
-```
+Copy and edit the example files:
 
-#### Frontend
-```bash
-VITE_API_URL=/api/v1/
-```
+- Backend: `cp devangwabackend/.env.example devangwabackend/.env`
+- Frontend: `cp devangwacoaching/.env.example devangwacoaching/.env`
+
+See `.env.example` in each project for the full list. Important production variables:
+
+| Variable | Purpose |
+|----------|---------|
+| `SECRET_KEY` | Required when `DEBUG=False` |
+| `PAYMENTS_API_BASE_URL` | Base URL for internal checkout calls (e.g. `https://yourdomain.com/api/v1/payments`) |
+| `CORS_ALLOWED_ORIGINS` | Comma-separated frontend origins |
+| `SENTRY_DSN` | Optional error monitoring |
+| `VITE_API_URL` | Frontend API prefix (`/api/v1/` or full URL) |
 
 ## 📚 API Documentation
 
@@ -124,17 +119,21 @@ VITE_API_URL=/api/v1/
 - `POST /api/v1/auth/users/` - Register new user
 
 ### Core Resources
-- **Courses:** `/api/v1/course/courses/`
-- **Users:** `/api/v1/auth/`
-- **Payments:** `/api/v1/payments/`
+- **Courses:** `/api/v1/course/courses/` — list, detail, enroll, enrolled
+- **Auth:** `/api/v1/auth/` — JWT, users, profile
+- **Payments:** `/api/v1/payments/checkout/`
+- **Events:** `/api/v1/coaching/events/`
 - **Community:** `/api/v1/community/`
+- **Health:** `/health/` and `/api/v1/health/`
+
+Full reference: [INTEGRATION_GUIDE.md](INTEGRATION_GUIDE.md)
 
 ## 🚀 Deployment
 
 ### Production Setup
 1. Set up PostgreSQL database
 2. Configure environment variables
-3. Build Docker image: `docker build -t devangwa-app .`
+3. Build Docker image: `docker build -f devangwabackend/Dockerfile -t devangwa-app .` (from monorepo root)
 4. Run container with production environment variables
 5. Set up SSL certificates (Let's Encrypt recommended)
 6. Configure domain and DNS
@@ -152,12 +151,13 @@ VITE_API_URL=/api/v1/
 
 ## 🔒 Security Features
 
-- JWT-based authentication
-- Rate limiting on API endpoints
-- CORS configuration
-- CSRF protection
-- Secure password hashing
-- Environment-based secrets management
+- JWT authentication with configurable token lifetimes
+- Default API permission: authenticated (public read on courses via view permissions)
+- Production requires non-default `SECRET_KEY` when `DEBUG=False`
+- HTTPS/HSTS/cookie flags when not in debug mode
+- CORS and CSRF trusted origins from environment
+- DRF rate throttling (anon/user) and payment checkout limits
+- Optional Sentry (only loads when `SENTRY_DSN` is set)
 
 ## 📊 Monitoring & Analytics
 
@@ -174,10 +174,10 @@ cd devangwabackend
 python manage.py test
 ```
 
-### Frontend Tests
+### Frontend Lint
 ```bash
 cd devangwacoaching
-npm run test
+npm run lint
 ```
 
 ### CI/CD
@@ -205,10 +205,10 @@ For technical support or questions:
 
 ## 🔄 Recent Updates
 
-- Production-ready Docker containerization
-- Rate limiting and security enhancements
-- PostgreSQL database support
-- Sentry monitoring integration
-- Automated CI/CD pipeline
-- Comprehensive deployment documentation</content>
+- Aligned course serializers with database models (modules, lectures, tags, reviews)
+- Course enrollment: `POST /api/v1/course/courses/{slug}/enroll/`, `GET .../enrolled/`
+- Frontend `courseService.js` and fixed checkout/auth/course display flows
+- Production settings: conditional Sentry, security headers, health endpoints
+- Docker entrypoint for migrations at runtime; build from monorepo root
+- `.env.example` files for backend and frontend</content>
 <parameter name="filePath">/Users/codexl-008/devangwa/devangwabackend/README.md

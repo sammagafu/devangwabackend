@@ -2,12 +2,15 @@ from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.exceptions import ValidationError
+from django.conf import settings
 from django.db.models import Prefetch
 from django.contrib.contenttypes.models import ContentType
 import requests
 import uuid
 import logging
 import time
+
+from devangwa.request_utils import get_bearer_token
 
 from .models import Course, Module, Video, Document, Quiz, Question, Answer, Enrollment, VideoProgress, DocumentProgress, QuizAttempt, ModuleProgress, FAQ, Tags, CourseReview
 from .serializers import (
@@ -20,14 +23,18 @@ from .serializers import (
 logger = logging.getLogger(__name__)
 
 class CourseViewSet(viewsets.ModelViewSet):
-    queryset = Course.objects.all()
+    queryset = Course.objects.all().prefetch_related(
+        'modules__videos', 'modules__documents', 'modules__quizzes',
+        'tags', 'faqs', 'instructor', 'reviews',
+    )
     serializer_class = CourseSerializer
     lookup_field = "slug"
 
-    def get_permissions(self):
-        if self.action in ['create', 'update', 'partial_update', 'destroy']:
-            return [permissions.IsAuthenticated()]
-        return [permissions.AllowAny()]
+    def get_queryset(self):
+        qs = super().get_queryset()
+        if self.action in ('list', 'retrieve') and not self.request.user.is_staff:
+            qs = qs.filter(ispublished=True)
+        return qs
 
     def perform_create(self, serializer):
         serializer.save(instructor=self.request.user)
@@ -38,7 +45,7 @@ class CourseViewSet(viewsets.ModelViewSet):
         while attempt <= max_attempts:
             try:
                 response = requests.post(
-                    f"{settings.PAYMENT_API_BASE_URL}/checkout/",
+                    f"{settings.PAYMENTS_API_BASE_URL}/checkout/",
                     json={
                         'content_type_id': content_type_id,
                         'object_id': object_id,
@@ -76,6 +83,10 @@ class CourseViewSet(viewsets.ModelViewSet):
         phone_number = request.data.get('phone_number')
         card_number = request.data.get('card_number')
 
+        auth_token = get_bearer_token(request)
+        if not auth_token:
+            return Response({'detail': 'Authentication required for paid enrollment.'}, status=status.HTTP_401_UNAUTHORIZED)
+
         try:
             content_type = ContentType.objects.get_for_model(Course)
             payment_response = self.process_payment(
@@ -85,7 +96,7 @@ class CourseViewSet(viewsets.ModelViewSet):
                 payment_method=payment_method,
                 phone_number=phone_number,
                 card_number=card_number,
-                auth_token=request.auth
+                auth_token=auth_token,
             )
 
             if payment_response['status'] == 'succeeded':
@@ -97,8 +108,8 @@ class CourseViewSet(viewsets.ModelViewSet):
         except requests.RequestException as e:
             return Response({'detail': f'Payment service error: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except Exception as e:
-            logger.error(f"Enroll error: {str(e)}")
-            return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+            logger.exception("Enroll error for course %s", slug)
+            return Response({'detail': 'Enrollment failed. Please try again.'}, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=False, methods=['get'], permission_classes=[permissions.IsAuthenticated])
     def enrolled(self, request):
@@ -407,9 +418,16 @@ class ModuleProgressViewSet(viewsets.ModelViewSet):
             raise ValidationError("Invalid enrollment or module")
 
 class CourseReviewViewSet(viewsets.ModelViewSet):
-    queryset = CourseReview.objects.all()
+    queryset = CourseReview.objects.filter(visible=True).select_related('user', 'course')
     serializer_class = CourseReviewSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        course_id = self.request.query_params.get('course') or self.request.query_params.get('course_id')
+        if course_id:
+            qs = qs.filter(course_id=course_id)
+        return qs
 
     def perform_create(self, serializer):
         course_id = self.request.data.get('course')

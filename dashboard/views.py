@@ -1,5 +1,6 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
+from rest_framework.permissions import IsAdminUser
 from django.db.models import Count, Sum
 from django.utils import timezone
 from django.db.models.functions import TruncMonth
@@ -11,6 +12,8 @@ from payments.models import Payment
 from community.models import Category, Thread, ThreadReply
 
 class DashboardStatsView(APIView):
+    permission_classes = [IsAdminUser]
+
     def get(self, request):
         try:
             # User stats
@@ -74,6 +77,8 @@ class DashboardStatsView(APIView):
             return Response({'error': str(e)}, status=500)
 
 class EarningsChartView(APIView):
+    permission_classes = [IsAdminUser]
+
     def get(self, request):
         try:
             end_date = timezone.now().date()
@@ -103,6 +108,8 @@ class EarningsChartView(APIView):
             return Response({'error': str(e)}, status=500)
 
 class TopInstructorsView(APIView):
+    permission_classes = [IsAdminUser]
+
     def get(self, request):
         try:
             top_instructors = CustomUser.objects.filter(
@@ -127,6 +134,8 @@ class TopInstructorsView(APIView):
             return Response({'error': str(e)}, status=500)
 
 class CommunityStatsView(APIView):
+    permission_classes = [IsAdminUser]
+
     def get(self, request):
         try:
             total_communities = Category.objects.count()
@@ -155,6 +164,8 @@ class CommunityStatsView(APIView):
             return Response({'error': str(e)}, status=500)
 
 class EventStatsView(APIView):
+    permission_classes = [IsAdminUser]
+
     def get(self, request):
         try:
             events = Event.objects.filter(start_time__gte=timezone.now())[:5]
@@ -173,6 +184,8 @@ class EventStatsView(APIView):
             return Response({'error': str(e)}, status=500)
 
 class TrafficSourcesView(APIView):
+    permission_classes = [IsAdminUser]
+
     def get(self, request):
         try:
             # Mock data; replace with actual traffic source logic

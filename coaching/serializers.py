@@ -25,12 +25,22 @@ class ScheduleSerializer(serializers.ModelSerializer):
 
 class ParticipantSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)
-    event = serializers.PrimaryKeyRelatedField(queryset=Event.objects.all(), write_only=True)
+    event = serializers.SerializerMethodField()
+    event_id = serializers.PrimaryKeyRelatedField(
+        queryset=Event.objects.all(), write_only=True, source='event'
+    )
 
     class Meta:
         model = Participant
-        fields = ['id', 'user', 'event', 'joined_at']
+        fields = ['id', 'user', 'event', 'event_id', 'joined_at']
         read_only_fields = ['joined_at']
+
+    def get_event(self, obj):
+        return {
+            'id': obj.event_id,
+            'slug': obj.event.slug,
+            'title': obj.event.title,
+        }
 
     def create(self, validated_data):
         validated_data['user'] = self.context['request'].user

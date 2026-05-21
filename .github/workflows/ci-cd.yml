@@ -11,10 +11,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: '3.11'
 
@@ -23,25 +23,39 @@ jobs:
         cd devangwabackend
         pip install -r requirements.txt
 
+    - name: Run Django checks
+      env:
+        SECRET_KEY: ci-test-secret-key-not-for-production
+        DEBUG: 'True'
+      run: |
+        cd devangwabackend
+        python manage.py check
+
     - name: Run Django migrations
+      env:
+        SECRET_KEY: ci-test-secret-key-not-for-production
+        DEBUG: 'True'
       run: |
         cd devangwabackend
         python manage.py migrate
 
     - name: Run Django tests
+      env:
+        SECRET_KEY: ci-test-secret-key-not-for-production
+        DEBUG: 'True'
       run: |
         cd devangwabackend
         python manage.py test
 
     - name: Set up Node.js
-      uses: actions/setup-node@v3
+      uses: actions/setup-node@v4
       with:
         node-version: '18'
 
     - name: Install frontend dependencies
       run: |
         cd devangwacoaching
-        npm install
+        npm ci || npm install
 
     - name: Build frontend
       run: |
@@ -53,18 +67,13 @@ jobs:
         cd devangwacoaching
         npm run lint
 
-  build-and-deploy:
+  build:
     needs: test
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
     - name: Build Docker image
-      run: docker build -t devangwa-app .
-
-    - name: Deploy to server
-      run: |
-        # Add deployment commands here
-        echo "Deploy to production server"
+      run: docker build -f devangwabackend/Dockerfile -t devangwa-app .

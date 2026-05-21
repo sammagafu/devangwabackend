@@ -132,16 +132,32 @@ EMAIL_USE_TLS=True
 EMAIL_HOST_USER=your-email@gmail.com
 EMAIL_HOST_PASSWORD=your-app-password
 
-# External Services
-SENTRY_DSN=your-sentry-dsn
-PAYMENTS_API_BASE_URL=http://localhost:8000
+# Payments (internal service URL used by course/coaching enroll)
+PAYMENTS_API_BASE_URL=http://127.0.0.1:8000/api/v1/payments
+DEFAULT_CURRENCY=TZS
+
+# CORS / CSRF (comma-separated, production)
+CORS_ALLOWED_ORIGINS=https://yourdomain.com
+CSRF_TRUSTED_ORIGINS=https://yourdomain.com
+
+# JWT (optional overrides)
+JWT_ACCESS_TOKEN_MINUTES=60
+JWT_REFRESH_TOKEN_DAYS=7
+
+# Sentry (optional — only initialized if SENTRY_DSN is set)
+SENTRY_DSN=
+SENTRY_ENVIRONMENT=production
+SENTRY_TRACES_SAMPLE_RATE=0.1
 ```
+
+See `.env.example` for the complete list.
 
 ### Key Settings
 
 - **CORS:** Configured for frontend integration
-- **JWT:** Access tokens (1 day), Refresh tokens (7 days)
-- **Rate Limiting:** Database-backed caching
+- **JWT:** Configurable via `JWT_ACCESS_TOKEN_MINUTES` / `JWT_REFRESH_TOKEN_DAYS` (defaults: 60 min / 7 days)
+- **Permissions:** Default `IsAuthenticated`; courses use `IsAuthenticatedOrReadOnly` for public catalog
+- **Rate Limiting:** DRF throttling + `10/minute` on payment checkout
 - **Static Files:** Served via Nginx in production
 - **Media Files:** User-uploaded content handling
 
@@ -155,16 +171,33 @@ PAYMENTS_API_BASE_URL=http://localhost:8000
 - `PUT /profile/` - Update user profile
 
 ### Courses (`/api/v1/course/`)
-- `GET /courses/` - List courses
-- `POST /courses/` - Create course (instructors only)
-- `GET /courses/{slug}/` - Course details
-- `PUT /courses/{slug}/` - Update course
-- `GET /modules/` - Course modules
-- `GET /videos/` - Course videos
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/courses/` | Public read | List published courses |
+| GET | `/courses/{slug}/` | Public read | Course detail (modules, lectures, tags, FAQs) |
+| POST | `/courses/{slug}/enroll/` | User | Enroll (free or paid via payments service) |
+| GET | `/courses/enrolled/` | User | Current user's enrollments |
+| GET | `/courses/drafts/` | User | Instructor drafts |
+| POST | `/reviews/` | User | Create review (`course`, `rating`, `comment`) |
+| GET | `/reviews/?course={id}` | User | List reviews for a course |
+
+Admin/staff: create/update/delete on courses, modules, videos, documents, quizzes.
 
 ### Payments (`/api/v1/payments/`)
-- `POST /process-payment/` - Process course payment
-- `GET /payment-history/` - User payment history
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/checkout/` | User | Process payment (simulated; replace for production) |
+| GET | `/earnings/` | User | Instructor earnings summary |
+
+### Coaching (`/api/v1/coaching/`)
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/events/` | Public read | List events |
+| POST | `/events/{slug}/attend/` | User | Register for event |
+| GET | `/participants/` | User | Own registrations (non-admin) |
+
+### Health
+- `GET /health/` and `GET /api/v1/health/` → `{"status": "ok"}`
 
 ### Community (`/api/v1/community/`)
 - `GET /threads/` - Discussion threads
@@ -220,11 +253,11 @@ python manage.py test
 
 ### Docker Deployment
 ```bash
-# Build image
-docker build -t devangwa-backend .
+# From monorepo root (includes frontend build)
+docker build -f devangwabackend/Dockerfile -t devangwa-app .
 
 # Run container
-docker run -p 8000:8000 \
+docker run -p 80:80 \
   -e DEBUG=False \
   -e SECRET_KEY=prod-secret \
   -e DATABASE_ENGINE=django.db.backends.postgresql \

@@ -23,7 +23,7 @@ class CustomUserSerializer(serializers.ModelSerializer):
     user_details = UserDetailsSerializer(source='userdetails', read_only=True)
     courses_instructed = CourseSerializer(many=True, read_only=True, source='course_creator')
     payments = PaymentSerializer(many=True, read_only=True, source='payment_set')
-    enrollments = EnrollmentSerializer(many=True, read_only=True, source='enrol')
+    enrollments = EnrollmentSerializer(many=True, read_only=True)
     threads = ThreadSerializer(many=True, read_only=True, source='thread_set')
     participants = ParticipantSerializer(many=True, read_only=True, source='participant_set')
 
@@ -40,10 +40,24 @@ class CustomUserSerializer(serializers.ModelSerializer):
 
 class CustomUserCreateSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, style={'input_type': 'password'})
+    phonenumber = serializers.CharField(required=True, allow_blank=False)
 
     class Meta:
         model = CustomUser
         fields = ('full_name', 'email', 'phonenumber', 'password', 'is_individual', 'is_company')
+
+    def validate_phonenumber(self, value):
+        phone = (value or '').strip()
+        if not phone:
+            raise serializers.ValidationError('Phone number is required.')
+        if not phone.startswith('+'):
+            phone = f'+{phone.lstrip("0")}'
+        return phone
+
+    def validate(self, attrs):
+        if not attrs.get('is_individual') and not attrs.get('is_company'):
+            attrs['is_individual'] = True
+        return attrs
 
     def create(self, validated_data):
         user = CustomUser.objects.create_user(
@@ -52,6 +66,6 @@ class CustomUserCreateSerializer(serializers.ModelSerializer):
             password=validated_data['password'],
             full_name=validated_data.get('full_name', ''),
             is_individual=validated_data.get('is_individual', False),
-            is_company=validated_data.get('is_company', False)
+            is_company=validated_data.get('is_company', False),
         )
         return user

@@ -23,9 +23,11 @@ from rest_framework_simplejwt.views import (
     TokenRefreshView,
 )
 
-from .views import index
+from .views import health, index
 
 urlpatterns = [
+    path('health/', health, name='health'),
+    path('api/v1/health/', health, name='api-health'),
     path('api/v1/admin/', admin.site.urls),
     path('api/v1/course/', include('course.urls')),
     path('api/v1/coaching/', include('coaching.urls')),
@@ -42,7 +44,6 @@ urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
 
 # Catch-all for SPA
-from .views import index
 urlpatterns += [
     re_path(r'^.*$', index, name='index'),
 ]

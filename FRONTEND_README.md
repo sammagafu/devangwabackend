@@ -55,7 +55,8 @@ devangwacoaching/
 │   │   ├── cart.js         # Shopping cart state
 │   │   └── layout.ts       # UI layout state
 │   ├── services/            # API service layer
-│   │   └── authService.js  # Authentication & API calls
+│   │   ├── authService.js  # Axios instance, JWT interceptors
+│   │   └── courseService.js # Courses, enrollment, reviews
 │   ├── router/              # Vue Router configuration
 │   │   └── index.js        # Route definitions
 │   ├── helpers/             # Utility functions
@@ -200,13 +201,9 @@ const routes = [
       { path: 'sign-up', component: SignUp }
     ]
   },
-  {
-    path: '/courses',
-    children: [
-      { path: '', component: CourseList },
-      { path: ':slug', component: CourseDetail }
-    ]
-  },
+  { path: '/courses', name: 'courses', component: CourseCatalog },
+  { path: '/course/:slug', name: 'course.detail', component: CourseDetailClassic },
+  { path: '/checkout', name: 'shop.checkout', meta: { authRequired: true } },
   {
     path: '/student',
     component: StudentLayout,
@@ -229,25 +226,37 @@ const routes = [
 ### Service Layer
 
 #### AuthService (`services/authService.js`)
-- JWT token management
-- Automatic token refresh
-- Request/response interceptors
-- Error handling
+- Shared Axios instance (`export const api`)
+- JWT attach + refresh on 401
+- `login`, `register`, `logout`, `initializeAuth`
+- Debug logs only in development (`import.meta.env.DEV`)
+
+#### CourseService (`services/courseService.js`)
+- `fetchCourses()`, `fetchCourse(slug)`, `fetchEnrolled()`
+- `enroll(slug, paymentData)`, `isEnrolled(slug)`
+- `fetchReviews(courseId)`, `submitReview(courseId, data)`
+- `normalizeCourse()` — maps API shape to UI (`cover` → `image`, `tags[].tag`, `modules[].lectures`)
 
 #### API Calls
 ```javascript
+import { api } from '@/services/authService'
+import courseService from '@/services/courseService'
+
 // Authentication
-const response = await api.post('auth/jwt/create/', credentials)
-const user = await api.get('auth/users/me/')
+await api.post('auth/jwt/create/', { email, password })
+await api.post('auth/users/', { email, password, full_name, phonenumber, is_individual: true })
 
-// Courses
-const courses = await api.get('course/courses/')
-const course = await api.get(`course/courses/${slug}/`)
+// Courses (prefer courseService)
+const courses = await courseService.fetchCourses()
+const course = await courseService.fetchCourse(slug)
+await courseService.enroll(slug, { payment_method: 'mpesa', phone_number: '+255...' })
 
+// Checkout uses courseService.enroll per cart item
 // Profile
-const profile = await api.get('auth/profile/')
 await api.put('auth/profile/', formData)
 ```
+
+**Important:** All course URLs use the `course/` prefix (e.g. `course/courses/enrolled/`, not `/courses/enrolled/`).
 
 ### Error Handling
 - Global error interceptor
@@ -386,16 +395,12 @@ npm run build
 - Production: `npm run build` with production env vars
 
 ### Docker Integration
-The frontend is built into the backend container:
-```dockerfile
-# Build frontend
-COPY devangwacoaching/ ./devangwacoaching/
-WORKDIR /app/devangwacoaching
-RUN npm install && npm run build
-
-# Copy built files to backend
-RUN cp -r /app/devangwacoaching/dist/* /app/devangwabackend/static/
+Build from the monorepo root:
+```bash
+docker build -f devangwabackend/Dockerfile -t devangwa-app .
 ```
+
+The Dockerfile builds the frontend, copies assets to `devangwabackend/static/assets/` and `templates/index.html`, and runs Nginx + Gunicorn. See [HANDOVER.md](HANDOVER.md).
 
 ## 🔍 Performance
 
